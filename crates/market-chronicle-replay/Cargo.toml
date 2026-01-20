@@ -1,0 +1,24 @@
+[package]
+name = "market-chronicle-replay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "market-chronicle-replay"
+path = "src/main.rs"
+
+[dependencies]
+market-chronicle-core = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+aws-types = { workspace = true }
+serde_json = { workspace = true }
+zstd = { workspace = true }
+chrono = { workspace = true }

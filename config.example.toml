@@ -1,0 +1,276 @@
+# Market Chronicle Configuration Example
+# 
+# This file contains a production-ready configuration example with all
+# supported exchanges and detailed comments explaining each option.
+#
+# Copy this file to config.toml and adjust values for your deployment.
+
+# ==============================================================================
+# S3 Configuration
+# ==============================================================================
+[s3]
+# S3-compatible endpoint URL
+# - For AWS S3: "https://s3.amazonaws.com" or "https://s3.{region}.amazonaws.com"
+# - For MinIO: "http://localhost:9000"
+# - For LakeFS: "http://localhost:8000"
+endpoint = "http://localhost:9000"
+
+# S3 bucket name where market data will be stored
+# Note: Bucket must exist before starting the service
+bucket = "market-data"
+
+# AWS region for the S3 bucket
+region = "us-east-1"
+
+# Top-level prefix for all S3 keys
+# Use this to:
+# - Separate environments (dev, staging, production)
+# - Separate multiple service instances (instance-1, instance-2)
+# - Enable easy data cleanup or migration
+prefix = "production"
+
+# S3 access credentials
+# SECURITY: Consider using environment variables instead of hardcoding
+# Example: access_key_id = "${AWS_ACCESS_KEY_ID}"
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"
+
+# Number of parallel S3 upload workers
+# - More workers = higher upload throughput
+# - More workers = more memory usage
+# Recommended: 4-8 for production
+upload_worker_count = 4
+
+# Number of messages per batch before flushing to S3
+# - Larger batches = fewer S3 uploads, better compression ratio
+# - Smaller batches = lower latency, more S3 operations
+# Recommended: 500-2000 depending on message rate
+batch_size = 1000
+
+# Maximum batch age in milliseconds before flushing to S3
+# - Ensures low-volume symbols get uploaded regularly
+# - Prevents indefinite waiting for partial batches
+# Recommended: 3000-10000 ms
+batch_timeout_ms = 5000
+
+# zstd compression level (1-22)
+# - Level 1-3: Fast compression, lower ratio (real-time streaming)
+# - Level 4-9: Balanced compression and speed
+# - Level 10-22: Maximum compression, very slow (archival)
+# Recommended: 3 for real-time, 5 for balanced
+compression_level = 3
+
+# ==============================================================================
+# Exchange Configurations
+# ==============================================================================
+# You can define multiple exchange configurations, each with different settings.
+# Each configuration creates an independent data collection pipeline.
+
+# ------------------------------------------------------------------------------
+# Binance Spot - Explicit Symbol List
+# ------------------------------------------------------------------------------
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+
+# WebSocket endpoint for Binance Spot
+ws_endpoint = "wss://stream.binance.com:9443/stream"
+
+# REST API endpoint for symbol discovery (used in "all" mode)
+rest_endpoint = "https://api.binance.com"
+
+# Subscription mode:
+# - "explicit": Subscribe only to symbols listed in 'symbols' array
+# - "all": Fetch all available symbols via REST API and subscribe to all
+mode = "explicit"
+
+# Symbols to subscribe to (required when mode = "explicit")
+# Must be uppercase, format: BASE + QUOTE (e.g., BTCUSDT, ETHBTC)
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"]
+
+# Symbol refresh interval in seconds (only used when mode = "all")
+# How often to fetch the symbol list from REST API to discover new symbols
+# Set to 0 when mode = "explicit" (not used)
+symbol_refresh_interval_s = 0
+
+# Stream types to subscribe to for each symbol
+# Available for Binance: trade, depth, kline, aggTrade, markPrice
+streams = ["trade", "depth", "kline"]
+
+# Kline (candlestick) intervals (required if "kline" is in streams)
+# Available intervals: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+kline_intervals = ["1m", "5m", "1h"]
+
+# WebSocket connection rate limit (connections per minute)
+# Binance limit: 5 connections per minute per IP
+ws_connection_rate = 5
+
+# Maximum streams per WebSocket connection
+# Binance Spot limit: 1024 streams per connection
+ws_streams_per_connection = 1024
+
+# Maximum concurrent WebSocket connections per IP
+# Binance limit: 300 connections per IP
+ws_max_connections = 300
+
+# ------------------------------------------------------------------------------
+# Binance Spot - All Symbols (High Volume)
+# ------------------------------------------------------------------------------
+# Uncomment this section to collect data for ALL Binance spot symbols
+# WARNING: This will create many workers and high data volume
+
+# [[exchanges]]
+# name = "binance"
+# market_type = "spot"
+# ws_endpoint = "wss://stream.binance.com:9443/stream"
+# rest_endpoint = "https://api.binance.com"
+# mode = "all"
+# symbols = []  # Empty for "all" mode
+# symbol_refresh_interval_s = 3600  # Refresh every hour
+# streams = ["trade"]  # Start with trade only to limit volume
+# kline_intervals = []
+# ws_connection_rate = 5
+# ws_streams_per_connection = 1024
+# ws_max_connections = 300
+
+# ------------------------------------------------------------------------------
+# Binance USDT Perpetual Futures
+# ------------------------------------------------------------------------------
+[[exchanges]]
+name = "binance"
+market_type = "perpetual"
+
+# WebSocket endpoint for Binance USDT Perpetual Futures
+ws_endpoint = "wss://fstream.binance.com/stream"
+
+# REST API endpoint for Binance Futures
+rest_endpoint = "https://fapi.binance.com"
+
+mode = "explicit"
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+symbol_refresh_interval_s = 0
+
+# Futures-specific streams: aggTrade (aggregated trades), markPrice (funding rate)
+streams = ["aggTrade", "depth", "kline", "markPrice"]
+kline_intervals = ["1m", "5m"]
+
+ws_connection_rate = 5
+
+# Note: Binance Futures has lower stream limit than Spot
+ws_streams_per_connection = 200
+ws_max_connections = 300
+
+# ------------------------------------------------------------------------------
+# Bybit Spot
+# ------------------------------------------------------------------------------
+[[exchanges]]
+name = "bybit"
+market_type = "spot"
+
+# Bybit V5 WebSocket endpoint for Spot
+ws_endpoint = "wss://stream.bybit.com/v5/public/spot"
+
+# Bybit V5 REST API endpoint
+rest_endpoint = "https://api.bybit.com"
+
+mode = "explicit"
+symbols = ["BTCUSDT", "ETHUSDT"]
+symbol_refresh_interval_s = 0
+
+# Bybit V5 stream types
+# - publicTrade: Public trades
+# - kline: Candlestick data
+# - orderbook: Order book snapshots and updates
+streams = ["publicTrade", "kline", "orderbook"]
+
+# Bybit kline intervals: 1, 3, 5, 15, 30, 60, 120, 240, 360, 720, D, W, M
+# Note: Numbers are in minutes, D=day, W=week, M=month
+kline_intervals = ["1", "5", "60"]
+
+# Bybit rate limits (more generous than Binance)
+ws_connection_rate = 10  # 10 connections per minute
+ws_streams_per_connection = 10  # Max 10 subscriptions per connection
+ws_max_connections = 500  # 500 connections per IP
+
+# ------------------------------------------------------------------------------
+# Bybit USDT Perpetual
+# ------------------------------------------------------------------------------
+[[exchanges]]
+name = "bybit"
+market_type = "perpetual"
+
+# Bybit V5 WebSocket endpoint for Linear (USDT Perpetual)
+ws_endpoint = "wss://stream.bybit.com/v5/public/linear"
+
+rest_endpoint = "https://api.bybit.com"
+
+mode = "explicit"
+symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+symbol_refresh_interval_s = 0
+
+streams = ["publicTrade", "kline", "orderbook"]
+kline_intervals = ["1", "5"]
+
+ws_connection_rate = 10
+ws_streams_per_connection = 10
+ws_max_connections = 500
+
+# ==============================================================================
+# Configuration Notes
+# ==============================================================================
+#
+# Stream Counting:
+# ----------------
+# - trade/depth/aggTrade/publicTrade: 1 stream per symbol
+# - kline: N streams per symbol (one per interval)
+# - markPrice: 1 stream (global, not per-symbol)
+#
+# Example: 5 symbols with ["trade", "kline"] and 3 intervals
+# Total: 5 * (1 trade + 3 klines) = 20 streams
+#
+# Worker Calculation:
+# ------------------
+# Required workers = ceil(total_streams / streams_per_connection)
+#
+# Example: 2048 total streams, 1024 streams per connection
+# Workers needed: ceil(2048 / 1024) = 2 workers
+#
+# S3 Data Layout:
+# --------------
+# Data is stored with Hive-style partitioning:
+# {prefix}/exchange={exchange}/market_type={spot|perpetual}/stream_type={type}/
+# symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
+#
+# Example:
+# production/exchange=binance/market_type=spot/stream_type=trade/
+# symbol=BTCUSDT/year=2024/month=01/day=15/hour=10/
+# a1b2c3d4-e5f6-7890-abcd-ef1234567890.ndjson.zst
+#
+# Performance Tuning:
+# ------------------
+# Low volume (< 100 msg/s):
+#   batch_size=500, batch_timeout_ms=10000, upload_worker_count=2
+#
+# Medium volume (100-1000 msg/s):
+#   batch_size=1000, batch_timeout_ms=5000, upload_worker_count=4
+#
+# High volume (> 1000 msg/s):
+#   batch_size=2000, batch_timeout_ms=2000, upload_worker_count=8
+#
+# Security Best Practices:
+# -----------------------
+# 1. Use environment variables for credentials
+# 2. Restrict S3 bucket permissions (principle of least privilege)
+# 3. Use IAM roles instead of access keys when possible
+# 4. Enable S3 bucket encryption
+# 5. Enable S3 access logging for audit trail
+#
+# Multi-Instance Deployment:
+# -------------------------
+# For high availability and rate limit distribution:
+# 1. Deploy 2-3 instances with identical configs
+# 2. Use different S3 prefix for each instance (instance-1, instance-2)
+# 3. Each instance gets separate rate limit quota
+# 4. Query layer handles deduplication
+#
+# See docs/geo-distributed-deployment.md for detailed guide

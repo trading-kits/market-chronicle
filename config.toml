@@ -1,0 +1,44 @@
+# Market Chronicle - Manual Testing Configuration
+#
+# This is a minimal configuration for local development and manual testing.
+# Start the dev environment first: make setup-dev
+
+[s3]
+# Local MinIO instance
+endpoint = "http://localhost:8000"
+bucket = "market-data"
+region = "us-east-1"
+prefix = "main"
+
+# MinIO default credentials (from docker-compose.yml)
+access_key_id = "AKIAJHI44AIJO5Y4O2SQ"
+secret_access_key = "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"
+
+# Small settings for quick testing
+upload_worker_count = 4
+batch_size = 10000              # Small batch size for quick flushing
+batch_timeout_ms = 60000      # 60 seconds timeout
+compression_level = 1        # Fast compression for testing
+
+# ==============================================================================
+# Test with a single symbol from Binance Spot
+# ==============================================================================
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+ws_endpoint = "wss://stream.binance.com:9443/stream"
+rest_endpoint = "https://api.binance.com"
+
+# Explicit mode with just BTC
+mode = "all"
+symbols = []
+symbol_refresh_interval_s = 3600
+
+# Just trade stream for simplicity
+streams = ["trade", "depth"]
+kline_intervals = []
+
+# Binance rate limits
+ws_connection_rate = 5
+ws_streams_per_connection = 512
+ws_max_connections = 300
