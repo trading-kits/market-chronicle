@@ -113,6 +113,15 @@ ws_streams_per_connection = 1024
 # Binance limit: 300 connections per IP
 ws_max_connections = 300
 
+# Maximum streams per subscription message
+# Binance typically allows up to 200 streams per subscribe request
+ws_max_batch_size = 200
+
+# Delay between subscription batches in milliseconds
+# Prevents rate limiting when sending multiple subscription requests
+# 0 = no delay, 100-200ms recommended for high-volume deployments
+ws_subscription_delay_ms = 100
+
 # ------------------------------------------------------------------------------
 # Binance Spot - All Symbols (High Volume)
 # ------------------------------------------------------------------------------
@@ -132,6 +141,8 @@ ws_max_connections = 300
 # ws_connection_rate = 5
 # ws_streams_per_connection = 1024
 # ws_max_connections = 300
+# ws_max_batch_size = 200
+# ws_subscription_delay_ms = 100
 
 # ------------------------------------------------------------------------------
 # Binance USDT Perpetual Futures
@@ -159,6 +170,8 @@ ws_connection_rate = 5
 # Note: Binance Futures has lower stream limit than Spot
 ws_streams_per_connection = 200
 ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 100
 
 # ------------------------------------------------------------------------------
 # Bybit Spot
@@ -189,8 +202,10 @@ kline_intervals = ["1", "5", "60"]
 
 # Bybit rate limits (more generous than Binance)
 ws_connection_rate = 10  # 10 connections per minute
-ws_streams_per_connection = 10  # Max 10 subscriptions per connection
+ws_streams_per_connection = 200  # Max 200 subscriptions per connection
 ws_max_connections = 500  # 500 connections per IP
+ws_max_batch_size = 10  # Bybit V5 max 10 topics per subscription
+ws_subscription_delay_ms = 200  # Bybit may need higher delay
 
 # ------------------------------------------------------------------------------
 # Bybit USDT Perpetual
@@ -212,8 +227,10 @@ streams = ["publicTrade", "kline", "orderbook"]
 kline_intervals = ["1", "5"]
 
 ws_connection_rate = 10
-ws_streams_per_connection = 10
+ws_streams_per_connection = 200
 ws_max_connections = 500
+ws_max_batch_size = 10
+ws_subscription_delay_ms = 200
 
 # ==============================================================================
 # Configuration Notes

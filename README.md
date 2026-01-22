@@ -14,6 +14,7 @@ Market Chronicle is a Rust-based service that collects real-time market data fro
 - **Graceful Shutdown**: Flush all data to S3 before termination
 - **Replay Utility**: Download and replay archived data for testing/backtesting
 - **Stateless Architecture**: No disk dependencies, easy horizontal scaling
+- **Observability**: OpenTelemetry metrics with Prometheus/Grafana support
 
 ## Quick Start
 
@@ -31,7 +32,7 @@ git clone https://github.com/yourusername/market-chronicle.git
 cd market-chronicle
 ```
 
-2. **Start development services** (MinIO + LakeFS):
+2. **Start development services** (MinIO + LakeFS + Prometheus + Grafana):
 ```bash
 make setup-dev
 ```
@@ -41,6 +42,10 @@ This starts:
 - **MinIO Console** at `http://localhost:9001` (admin/admin)
 - **LakeFS** (data versioning) at `http://localhost:8000`
 - **PostgreSQL** (LakeFS metadata)
+- **Prometheus** (metrics storage) at `http://localhost:9091`
+- **Grafana** (metrics visualization) at `http://localhost:3000` (admin/admin)
+
+> **Note**: Prometheus runs on port 9091 to avoid conflict with market-chronicle's metrics endpoint (port 9090)
 
 3. **Create configuration file**:
 ```bash
@@ -280,25 +285,61 @@ Options:
 
 ## Production Deployment
 
-### Docker
+### Docker Compose (Recommended for Local/Development)
+
+The project includes a complete Docker Compose setup with all dependencies:
+
+```bash
+# Build and start all services (MinIO, LakeFS, Prometheus, Grafana, Market Chronicle)
+make docker-up
+
+# View logs
+make docker-logs
+
+# Stop all services
+make docker-down
+```
+
+This starts the complete stack:
+- **MinIO**: S3-compatible storage on port 9000
+- **LakeFS**: Data versioning on port 8000
+- **Prometheus**: Metrics on port 9091
+- **Grafana**: Dashboards on port 3000
+- **Market Chronicle**: Service with metrics on port 9090
+
+**Configuration**: Copy `config.docker.toml` to `config.toml` and customize:
+
+```bash
+cp config.docker.toml config.toml
+# Edit config.toml with your settings
+make docker-rebuild
+```
+
+### Docker (Standalone)
 
 1. **Build Docker image**:
-```dockerfile
-FROM rust:1.75 as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release --bin market-chronicle
-
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/market-chronicle /usr/local/bin/
-ENTRYPOINT ["market-chronicle"]
+```bash
+docker build -t market-chronicle:latest .
 ```
 
 2. **Run container**:
 ```bash
-docker build -t market-chronicle .
-docker run -v $(pwd)/config.toml:/config.toml market-chronicle /config.toml
+docker run -d \
+  --name market-chronicle \
+  -p 9090:9090 \
+  -v $(pwd)/config.toml:/config/config.toml:ro \
+  -e RUST_LOG=info \
+  market-chronicle:latest
+```
+
+3. **View logs**:
+```bash
+docker logs -f market-chronicle
+```
+
+4. **Check metrics**:
+```bash
+curl http://localhost:9090/metrics
 ```
 
 ### Kubernetes
@@ -324,6 +365,10 @@ spec:
       - name: market-chronicle
         image: market-chronicle:latest
         args: ["/config/config.toml"]
+        ports:
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /config
@@ -334,10 +379,52 @@ spec:
           limits:
             memory: "2Gi"
             cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 5
       volumes:
       - name: config
         configMap:
           name: market-chronicle-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-chronicle
+  labels:
+    app: market-chronicle
+spec:
+  ports:
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+  selector:
+    app: market-chronicle
+---
+# If using Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: market-chronicle
+  labels:
+    app: market-chronicle
+spec:
+  selector:
+    matchLabels:
+      app: market-chronicle
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
 ```
 
 ### Multi-Instance Deployment
@@ -370,17 +457,55 @@ See [docs/geo-distributed-deployment.md](docs/geo-distributed-deployment.md) for
 
 ## Monitoring
 
-### Key Metrics
+Market Chronicle includes built-in OpenTelemetry metrics with Prometheus exporter support.
 
-Track these metrics for production deployments:
+### Metrics Server
 
-1. **Message Rate**: Messages received per second
-2. **Batch Rate**: Batches created per second
-3. **Upload Rate**: Successful uploads per second
-4. **Channel Fullness**: Message/batch channel utilization
-5. **Worker Health**: WebSocket connection status
-6. **Upload Latency**: Time from message to S3
-7. **Error Rate**: Failed uploads, reconnections
+The service exposes metrics on port 9090:
+
+- **Metrics endpoint**: `http://localhost:9090/metrics` (Prometheus format)
+- **Health check**: `http://localhost:9090/health`
+
+### Available Metrics
+
+The service tracks comprehensive metrics for all components:
+
+**WebSocket Workers**:
+- `worker_messages_received_total` - Total messages received per worker
+- `worker_active_streams` - Number of active stream subscriptions
+- `worker_reconnects_total` - WebSocket reconnection count
+
+**Batch Aggregator**:
+- `batch_messages_processed_total` - Messages processed into batches
+- `batch_created_total` - Number of batches created
+- `batch_size_messages` - Distribution of batch sizes
+- `batch_active` - Currently active batches in memory
+
+**S3 Uploader**:
+- `s3_uploads_total` - Successful S3 uploads
+- `s3_upload_failures_total` - Failed S3 uploads
+- `s3_upload_duration_seconds` - Upload latency distribution
+- `s3_upload_bytes_total` - Total bytes uploaded
+- `s3_compression_ratio` - Compression ratio distribution
+
+**Symbol Manager**:
+- `symbols_discovered_total` - New symbols discovered
+- `symbols_delisted_total` - Symbols removed
+- `symbols_active` - Currently active symbols
+
+### Prometheus + Grafana Setup
+
+The included `docker-compose.yml` provides a complete monitoring stack:
+
+```bash
+# Start all services including Prometheus + Grafana
+make setup-dev
+
+# Access Grafana at http://localhost:3000 (admin/admin)
+# Prometheus datasource is pre-configured
+```
+
+See [docs/metrics.md](docs/metrics.md) for detailed metrics documentation, PromQL examples, and Grafana dashboard setup.
 
 ### Health Check
 
@@ -393,12 +518,15 @@ The service logs to stdout/stderr. Monitor for:
 
 ### Alerting
 
-Set up alerts for:
+Example Prometheus alert rules are provided in `prometheus-alerts.yml`. Key alerts include:
 
 - Service down for > 5 minutes
 - Upload failures > 10% for 5 minutes
 - All workers disconnected
-- Channel utilization > 90%
+- S3 upload latency > 30s
+- High memory usage
+
+See [docs/metrics.md](docs/metrics.md) for complete alerting configuration.
 
 ## Development
 
@@ -443,6 +571,8 @@ cargo test -- --nocapture
 - [Data Flow](docs/data-flow.md) - Complete pipeline with diagrams
 - [Graceful Shutdown](docs/graceful-shutdown.md) - Shutdown sequence and data loss
 - [Configuration Guide](docs/configuration-guide.md) - Complete config reference
+- [Metrics & Observability](docs/metrics.md) - OpenTelemetry, Prometheus, Grafana setup
+- [Docker Setup](DOCKER_SETUP.md) - Local development environment guide
 - [Geo-Distributed Deployment](docs/geo-distributed-deployment.md) - Multi-instance patterns
 
 ## Troubleshooting
@@ -550,7 +680,10 @@ Contributions welcome! Please:
 
 Built with:
 - [Tokio](https://tokio.rs/) - Async runtime
-- [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite) - WebSocket
+- [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite) - WebSocket client
 - [AWS SDK for Rust](https://github.com/awslabs/aws-sdk-rust) - S3 client
+- [OpenTelemetry](https://opentelemetry.io/) - Observability framework
+- [Axum](https://github.com/tokio-rs/axum) - Metrics HTTP server
+- [Prometheus](https://prometheus.io/) - Metrics storage and alerting
 - [zstd](https://github.com/facebook/zstd) - Compression
 - [serde](https://serde.rs/) - Serialization

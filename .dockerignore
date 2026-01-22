@@ -1,0 +1,54 @@
+# Target directory (build artifacts)
+target/
+**/target/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Docker files
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# CI/CD
+.github/
+
+# Local development files
+config.toml
+*.local.toml
+
+# Logs
+*.log
+
+# Testing
+tests/
+**/tests/
+
+# Grafana and Prometheus configs
+grafana-provisioning/
+prometheus.yml
+prometheus-alerts.yml
+grafana-dashboard.json
+
+# Data directories
+data/
+minio_data/
+postgres_data/
+lakefs_data/
+prometheus_data/
+grafana_data/

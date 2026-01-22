@@ -3,6 +3,8 @@ mod worker_pool;
 mod symbol_manager;
 mod batch_aggregator;
 mod s3_uploader;
+mod metrics;
+mod metrics_server;
 
 use anyhow::Result;
 use aws_config::BehaviorVersion;
@@ -16,6 +18,8 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 use batch_aggregator::BatchAggregator;
+use metrics::Metrics;
+use metrics_server::MetricsServer;
 use s3_uploader::S3Uploader;
 use symbol_manager::SymbolManager;
 use worker_pool::WorkerPoolManager;
@@ -45,9 +49,21 @@ async fn main() -> Result<()> {
         "Configuration loaded"
     );
     
+    // Initialize metrics
+    let metrics = Arc::new(Metrics::new("market-chronicle")?);
+    info!("OpenTelemetry metrics initialized");
+    
     // Create shutdown signal
     let shutdown = Arc::new(Notify::new());
     let shutdown_clone = shutdown.clone();
+    
+    // Start metrics HTTP server on port 9090
+    let metrics_server = MetricsServer::new(metrics.clone(), 9090, shutdown.clone());
+    let metrics_handle = tokio::spawn(async move {
+        if let Err(e) = metrics_server.start().await {
+            error!("Metrics server failed: {}", e);
+        }
+    });
     
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
@@ -227,13 +243,28 @@ async fn main() -> Result<()> {
         "Step 6: Waiting for S3 uploaders to complete"
     );
     for (idx, handle) in uploader_handles.into_iter().enumerate() {
-        match tokio::time::timeout(Duration::from_secs(30), handle).await {
+        match tokio::time::timeout(Duration::from_secs(300), handle).await {
             Ok(Ok(())) => info!(uploader_id = idx, "S3 uploader completed successfully"),
             Ok(Err(e)) => error!(uploader_id = idx, "S3 uploader task error: {}", e),
             Err(_) => {
                 error!(uploader_id = idx, "S3 uploader shutdown timed out");
             }
         }
+    }
+    
+    // 7. Wait for metrics server
+    info!("Step 7: Waiting for metrics server to stop");
+    match tokio::time::timeout(Duration::from_secs(5), metrics_handle).await {
+        Ok(Ok(())) => info!("Metrics server stopped successfully"),
+        Ok(Err(e)) => error!("Metrics server task error: {}", e),
+        Err(_) => {
+            error!("Metrics server shutdown timed out");
+        }
+    }
+    
+    // Shutdown metrics
+    if let Err(e) = metrics.shutdown() {
+        error!("Failed to shutdown metrics: {}", e);
     }
     
     info!("=== Shutdown complete ===");

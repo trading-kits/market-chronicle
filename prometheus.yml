@@ -1,0 +1,59 @@
+# Prometheus configuration for Market Chronicle
+# Place this file at /etc/prometheus/prometheus.yml or use with docker-compose
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'market-chronicle-prod'
+    region: 'us-east-1'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+           - localhost:9093
+
+# Load rules
+rule_files:
+  - "prometheus-alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Market Chronicle service
+  - job_name: 'market-chronicle'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    metrics_path: '/metrics'
+    static_configs:
+      # For local development (host machine)
+      # - targets:
+      #     - 'host.docker.internal:9090'
+      #   labels:
+      #     service: 'market-chronicle'
+      #     environment: 'development'
+      #     instance: 'local'
+      
+      # For containerized deployment
+      - targets:
+          - 'market-chronicle:9090'
+        labels:
+          service: 'market-chronicle'
+          environment: 'production'
+          instance: 'primary'
+    
+    # For multi-instance deployments
+    # - targets:
+    #     - 'market-chronicle-1:9090'
+    #     - 'market-chronicle-2:9090'
+    #     - 'market-chronicle-3:9090'
+    #   labels:
+    #     service: 'market-chronicle'
+    #     environment: 'production'
+    #     datacenter: 'us-west-2'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9091']

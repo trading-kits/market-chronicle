@@ -35,10 +35,12 @@ symbols = []
 symbol_refresh_interval_s = 3600
 
 # Just trade stream for simplicity
-streams = ["trade", "depth"]
-kline_intervals = []
+streams = ["trade", "depth", "kline"]
+kline_intervals = ["1m"]
 
 # Binance rate limits
 ws_connection_rate = 5
-ws_streams_per_connection = 512
+ws_streams_per_connection = 400
 ws_max_connections = 300
+ws_max_batch_size = 200  # Maximum streams per subscription message
+ws_subscription_delay_ms = 100  # Delay between subscription batches (milliseconds)

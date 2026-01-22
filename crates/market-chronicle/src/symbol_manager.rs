@@ -3,11 +3,12 @@ use market_chronicle_core::{
     error::Result,
     rest::{RestClient, binance::BinanceRestClient, bybit::BybitRestClient},
 };
+use opentelemetry::KeyValue;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
-use tracing::{info, warn, error};
+use tracing::{debug, info, warn, error};
 
 use crate::worker_pool::WorkerPoolManager;
 
@@ -17,6 +18,8 @@ pub struct SymbolManager {
     current_symbols: HashSet<String>,
     worker_pool: WorkerPoolManager,
     shutdown: Arc<Notify>,
+    symbols_active_gauge: opentelemetry::metrics::UpDownCounter<i64>,
+    exchange_label: Vec<KeyValue>,
 }
 
 impl SymbolManager {
@@ -31,12 +34,29 @@ impl SymbolManager {
             _ => panic!("Unknown exchange: {}", config.name),
         };
         
+        // Initialize metrics
+        let meter = opentelemetry::global::meter("symbol_manager");
+        let symbols_active_gauge = meter
+            .i64_up_down_counter("symbols_active")
+            .with_description("Number of active trading symbols")
+            .init();
+        
+        let exchange_label = vec![
+            KeyValue::new("exchange", config.name.clone()),
+            KeyValue::new("market_type", config.market_type.to_string()),
+        ];
+        
+        // Initialize gauge to 0
+        symbols_active_gauge.add(0, &exchange_label);
+        
         Self {
             config,
             rest_client,
             current_symbols: HashSet::new(),
             worker_pool,
             shutdown,
+            symbols_active_gauge,
+            exchange_label,
         }
     }
     
@@ -91,6 +111,7 @@ impl SymbolManager {
         }
         
         self.current_symbols = self.config.symbols.iter().cloned().collect();
+        self.symbols_active_gauge.add(self.current_symbols.len() as i64, &self.exchange_label);
     }
     
     async fn run_dynamic_discovery(&mut self) {
@@ -143,6 +164,7 @@ impl SymbolManager {
             info!(
                 exchange = %self.config.name,
                 new_symbols = added.len(),
+                symbols = ?added.iter().take(10).collect::<Vec<_>>(),
                 "Discovered new symbols"
             );
             
@@ -154,6 +176,11 @@ impl SymbolManager {
             );
             
             self.worker_pool.spawn_workers_for_streams(streams).await?;
+        } else {
+            debug!(
+                exchange = %self.config.name,
+                "No new symbols discovered"
+            );
         }
         
         // Find removed symbols (delisted)
@@ -162,12 +189,18 @@ impl SymbolManager {
             warn!(
                 exchange = %self.config.name,
                 delisted_symbols = removed.len(),
+                symbols = ?removed.iter().take(10).collect::<Vec<_>>(),
                 "Symbols delisted (workers will continue)"
             );
             // Note: We don't unsubscribe or shutdown workers (workers never scale down)
         }
         
+        let old_count = self.current_symbols.len();
         self.current_symbols = new_symbols_set;
+        let new_count = self.current_symbols.len();
+        
+        // Update gauge
+        self.symbols_active_gauge.add((new_count as i64) - (old_count as i64), &self.exchange_label);
         
         Ok(())
     }

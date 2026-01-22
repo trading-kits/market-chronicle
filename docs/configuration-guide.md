@@ -141,6 +141,8 @@ kline_intervals = ["1m", "5m", "1h"]                  # Kline intervals (if klin
 ws_connection_rate = 5                                # Max connections per minute
 ws_streams_per_connection = 1024                      # Max streams per connection
 ws_max_connections = 300                              # Max concurrent connections
+ws_max_batch_size = 200                               # Max streams per subscription message
+ws_subscription_delay_ms = 100                        # Delay between subscription batches (ms)
 ```
 
 ### Exchange Parameters
@@ -237,6 +239,41 @@ ws_max_connections = 300                              # Max concurrent connectio
 - **Description**: Hard limit on concurrent connections
 - **Notes**: Helps prevent accidental rate limit violations
 
+#### `ws_max_batch_size`
+- **Type**: Integer
+- **Required**: Yes
+- **Binance**: 200 streams per subscription
+- **Bybit**: 10 streams per subscription
+- **Description**: Maximum number of streams per subscription message
+- **Notes**: 
+  - Different from `ws_streams_per_connection` which limits total active streams
+  - This limits how many streams can be sent in a single subscribe API call
+  - When a worker has more streams than this limit, it will send multiple subscription messages
+  - Must be ≤ `ws_streams_per_connection`
+  - Prevents subscription failures from exceeding exchange's per-request limits
+
+**Example**: If `ws_streams_per_connection = 512` and `ws_max_batch_size = 200`:
+- A worker can maintain 512 active streams on one connection
+- But it will subscribe in batches: 200 + 200 + 112 (3 subscription messages)
+
+#### `ws_subscription_delay_ms`
+- **Type**: Integer
+- **Required**: No (defaults to 0)
+- **Range**: 0-10000 milliseconds
+- **Recommended**: 100-200ms for high-volume deployments
+- **Description**: Delay between sending subscription batches to prevent rate limiting
+- **Notes**:
+  - 0 = no delay (immediate subscription)
+  - Prevents exchange API rate limiting when sending many subscription requests
+  - Higher delay = safer from rate limits, but slower startup
+  - Lower delay = faster startup, but risk of rate limiting
+  - Critical when using `mode = "all"` with hundreds of symbols
+
+**Example**: With 512 streams, `ws_max_batch_size = 200`, and `ws_subscription_delay_ms = 100`:
+- Worker sends 3 subscription messages
+- Timeline: subscribe(200) → wait 100ms → subscribe(200) → wait 100ms → subscribe(112)
+- Total subscription time: ~200ms instead of instant
+
 ## Stream Counting
 
 Understanding how streams are counted is critical for capacity planning:
@@ -305,6 +342,8 @@ kline_intervals = []
 ws_connection_rate = 5
 ws_streams_per_connection = 1024
 ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0  # No delay for single symbol
 ```
 
 ### Example 2: Production (Multiple Exchanges, High Volume)
@@ -335,6 +374,8 @@ kline_intervals = ["1m", "5m"]
 ws_connection_rate = 5
 ws_streams_per_connection = 1024
 ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 100  # Important for "all" mode
 
 [[exchanges]]
 name = "binance"
@@ -349,6 +390,8 @@ kline_intervals = []
 ws_connection_rate = 5
 ws_streams_per_connection = 200
 ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 100
 
 [[exchanges]]
 name = "bybit"
@@ -393,6 +436,8 @@ kline_intervals = []
 ws_connection_rate = 5
 ws_streams_per_connection = 1024
 ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0
 ```
 
 ## Troubleshooting

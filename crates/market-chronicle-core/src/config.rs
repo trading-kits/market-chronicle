@@ -73,6 +73,9 @@ pub struct ExchangeConfig {
     pub ws_connection_rate: u32,
     pub ws_streams_per_connection: usize,
     pub ws_max_connections: usize,
+    pub ws_max_batch_size: usize,
+    #[serde(default)]
+    pub ws_subscription_delay_ms: u64,
 }
 
 impl ExchangeConfig {
@@ -137,6 +140,24 @@ impl ExchangeConfig {
             return Err(Error::Config(format!("Exchange {} ws_max_connections must be > 0", self.name)));
         }
         
+        if self.ws_max_batch_size == 0 {
+            return Err(Error::Config(format!("Exchange {} ws_max_batch_size must be > 0", self.name)));
+        }
+        
+        if self.ws_max_batch_size > self.ws_streams_per_connection {
+            return Err(Error::Config(format!(
+                "Exchange {} ws_max_batch_size ({}) cannot exceed ws_streams_per_connection ({})", 
+                self.name, self.ws_max_batch_size, self.ws_streams_per_connection
+            )));
+        }
+        
+        if self.ws_subscription_delay_ms > 10000 {
+            return Err(Error::Config(format!(
+                "Exchange {} ws_subscription_delay_ms ({}) is too high (max 10000ms)", 
+                self.name, self.ws_subscription_delay_ms
+            )));
+        }
+        
         Ok(())
     }
     
@@ -193,6 +214,8 @@ mod tests {
             ws_connection_rate: 5,
             ws_streams_per_connection: 1024,
             ws_max_connections: 300,
+            ws_max_batch_size: 200,
+            ws_subscription_delay_ms: 0,
         };
         
         assert!(config.validate().is_err());
@@ -213,6 +236,8 @@ mod tests {
             ws_connection_rate: 5,
             ws_streams_per_connection: 1024,
             ws_max_connections: 300,
+            ws_max_batch_size: 200,
+            ws_subscription_delay_ms: 0,
         };
         
         assert!(config.validate().is_err());
@@ -233,6 +258,8 @@ mod tests {
             ws_connection_rate: 5,
             ws_streams_per_connection: 1024,
             ws_max_connections: 300,
+            ws_max_batch_size: 200,
+            ws_subscription_delay_ms: 0,
         };
         
         assert!(config.validate().is_err());

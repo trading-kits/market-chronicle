@@ -44,6 +44,17 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
+# Observability (OpenTelemetry)
+opentelemetry = "0.22"
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.15", features = ["tonic", "metrics"] }
+opentelemetry-prometheus = "0.15"
+prometheus = "0.13"
+tracing-opentelemetry = "0.23"
+
+# HTTP server for metrics
+axum = "0.7"
+
 # Rate limiting
 governor = "0.6"
 

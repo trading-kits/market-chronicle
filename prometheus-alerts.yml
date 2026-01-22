@@ -1,0 +1,151 @@
+# Prometheus alerting rules for Market Chronicle
+# Place this file next to prometheus.yml
+
+groups:
+  - name: market_chronicle_critical
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job="market-chronicle"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "Market Chronicle service is down"
+          description: "Instance {{ $labels.instance }} has been down for more than 1 minute"
+          runbook: "Check service logs and restart if necessary"
+      
+      - alert: NoMessagesReceived
+        expr: rate(worker_messages_received[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: websocket
+        annotations:
+          summary: "No messages being received"
+          description: "Zero message rate for 5 minutes on {{ $labels.instance }}"
+          impact: "Data collection has stopped"
+          runbook: "Check WebSocket connections and exchange API status"
+      
+      - alert: HighS3UploadFailureRate
+        expr: rate(s3_uploads_failures[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "High S3 upload failure rate"
+          description: "{{ $value | humanize }} S3 upload failures per second on {{ $labels.instance }}"
+          impact: "Data loss risk - messages not being persisted"
+          runbook: "Check S3 connectivity, credentials, and bucket configuration"
+      
+      - alert: AllS3UploadsFailing
+        expr: rate(s3_uploads_total[5m]) == 0 and rate(batch_created_total[5m]) > 0
+        for: 3m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "All S3 uploads are failing"
+          description: "Batches are being created but no successful uploads on {{ $labels.instance }}"
+          impact: "Complete data loss - all messages being dropped"
+          runbook: "Immediate action required: Check S3 configuration and connectivity"
+
+  - name: market_chronicle_warning
+    interval: 1m
+    rules:
+      - alert: HighWebSocketReconnectionRate
+        expr: rate(worker_reconnects_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "High WebSocket reconnection rate"
+          description: "Worker {{ $labels.worker_id }} reconnecting {{ $value | humanizePercentage }} times per second"
+          impact: "Potential message loss during reconnections"
+          runbook: "Check network stability and exchange API health"
+      
+      - alert: LowMessageIngestionRate
+        expr: rate(worker_messages_received[5m]) < 10
+        for: 10m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "Low message ingestion rate"
+          description: "Only {{ $value | humanize }} msg/sec (expected > 10) on {{ $labels.instance }}"
+          impact: "Reduced data collection"
+          runbook: "Check if markets are active and WebSocket subscriptions are correct"
+      
+      - alert: HighS3UploadLatency
+        expr: histogram_quantile(0.95, rate(s3_upload_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "High S3 upload latency"
+          description: "P95 upload time is {{ $value | humanizeDuration }} (threshold: 5s)"
+          impact: "Increased memory usage from batch backlog"
+          runbook: "Check S3 endpoint performance and network latency"
+      
+      - alert: LowCompressionRatio
+        expr: avg(s3_compression_ratio) < 5
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Low compression ratio"
+          description: "Average compression ratio is {{ $value | humanize }}x (expected > 5x)"
+          impact: "Higher storage costs"
+          runbook: "Review compression level configuration and data patterns"
+      
+      - alert: HighActiveBatchCount
+        expr: batch_active > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: aggregator
+        annotations:
+          summary: "High number of active batches"
+          description: "{{ $value }} active batches in memory (normal: < 100)"
+          impact: "High memory usage"
+          runbook: "Check batch timeout configuration and S3 upload rate"
+      
+      - alert: HighSymbolChurnRate
+        expr: rate(symbols_discovered_total[1h]) > 50 or rate(symbols_delisted_total[1h]) > 20
+        for: 30m
+        labels:
+          severity: warning
+          component: discovery
+        annotations:
+          summary: "Unusual symbol churn rate"
+          description: "High rate of symbol changes detected"
+          impact: "Increased worker spawn/cleanup activity"
+          runbook: "Verify exchange API behavior and symbol refresh interval"
+
+  - name: market_chronicle_info
+    interval: 5m
+    rules:
+      - alert: NewSymbolsDiscovered
+        expr: increase(symbols_discovered_total[1h]) > 10
+        labels:
+          severity: info
+          component: discovery
+        annotations:
+          summary: "New symbols discovered"
+          description: "{{ $value }} new symbols added in the last hour"
+          impact: "New workers will be spawned"
+      
+      - alert: SymbolsDelisted
+        expr: increase(symbols_delisted_total[1h]) > 5
+        labels:
+          severity: info
+          component: discovery
+        annotations:
+          summary: "Symbols delisted"
+          description: "{{ $value }} symbols removed in the last hour"
+          impact: "Workers may be cleaned up"

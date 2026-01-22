@@ -16,6 +16,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-opentelemetry = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }
@@ -23,3 +24,9 @@ aws-types = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 zstd = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry-prometheus = { workspace = true }
+prometheus = { workspace = true }
+axum = { workspace = true }

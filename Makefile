@@ -45,21 +45,27 @@ run-release: ## Run the main service in release mode
 	cargo run --release --bin market-chronicle -- config.toml
 
 ## Docker Compose dev environment
-setup-dev: ## Start all development services (MinIO, PostgreSQL, LakeFS)
+setup-dev: ## Start all development services (MinIO, PostgreSQL, LakeFS, Prometheus, Grafana)
 	docker-compose up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 10
 	@echo ""
 	@echo "✅ Development environment ready!"
 	@echo ""
-	@echo "📦 MinIO Console:  http://localhost:9001"
+	@echo "📦 MinIO Console:     http://localhost:9001"
 	@echo "   Username: minioadmin"
 	@echo "   Password: minioadmin"
 	@echo ""
-	@echo "🏔  LakeFS Console: http://localhost:8000"
+	@echo "🏔  LakeFS Console:    http://localhost:8000"
 	@echo "   Setup required on first run"
 	@echo ""
-	@echo "Run 'make minio-console' or 'make lakefs-console' to open in browser"
+	@echo "📊 Prometheus:        http://localhost:9090"
+	@echo ""
+	@echo "📈 Grafana:           http://localhost:3000"
+	@echo "   Username: admin"
+	@echo "   Password: admin"
+	@echo ""
+	@echo "Run 'make minio-console', 'make lakefs-console', or 'make grafana-console' to open in browser"
 
 stop-dev: ## Stop development services
 	docker-compose stop
@@ -81,6 +87,12 @@ logs-lakefs: ## Follow LakeFS logs only
 logs-postgres: ## Follow PostgreSQL logs only
 	docker-compose logs -f postgres
 
+logs-prometheus: ## Follow Prometheus logs only
+	docker-compose logs -f prometheus
+
+logs-grafana: ## Follow Grafana logs only
+	docker-compose logs -f grafana
+
 minio-console: ## Open MinIO console in browser
 	@echo "Opening MinIO console at http://localhost:9001"
 	@command -v open >/dev/null 2>&1 && open http://localhost:9001 || \
@@ -92,6 +104,18 @@ lakefs-console: ## Open LakeFS console in browser
 	@command -v open >/dev/null 2>&1 && open http://localhost:8000 || \
 	 command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:8000 || \
 	 echo "Please open http://localhost:8000 in your browser"
+
+prometheus-console: ## Open Prometheus console in browser
+	@echo "Opening Prometheus at http://localhost:9090"
+	@command -v open >/dev/null 2>&1 && open http://localhost:9090 || \
+	 command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:9090 || \
+	 echo "Please open http://localhost:9090 in your browser"
+
+grafana-console: ## Open Grafana console in browser
+	@echo "Opening Grafana at http://localhost:3000"
+	@command -v open >/dev/null 2>&1 && open http://localhost:3000 || \
+	 command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:3000 || \
+	 echo "Please open http://localhost:3000 in your browser"
 
 ## Clean commands
 clean: ## Remove build artifacts
@@ -120,6 +144,32 @@ watch-test: ## Watch for changes and run tests
 
 watch-run: ## Watch for changes and run the service
 	cargo watch -x "run --bin market-chronicle -- config.toml"
+
+## Docker commands
+docker-build: ## Build Docker image
+	docker build -t market-chronicle:latest .
+
+docker-up: ## Start all services including market-chronicle
+	docker-compose up -d
+
+docker-down: ## Stop all Docker services
+	docker-compose down
+
+docker-logs: ## Follow logs from market-chronicle service
+	docker-compose logs -f market-chronicle
+
+docker-logs-all: ## Follow logs from all services
+	docker-compose logs -f
+
+docker-restart: ## Restart market-chronicle service
+	docker-compose restart market-chronicle
+
+docker-rebuild: ## Rebuild and restart market-chronicle
+	docker-compose build market-chronicle
+	docker-compose up -d market-chronicle
+
+docker-clean: ## Remove all containers, volumes, and images
+	docker-compose down -v --rmi all
 
 ## Documentation
 docs: ## Build and open documentation

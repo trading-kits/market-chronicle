@@ -104,15 +104,31 @@ impl WorkerPoolManager {
                 join_handle: handle,
             });
             
-            // Send initial subscribe command
-            let _ = cmd_tx.send(WorkerCommand::Subscribe {
-                streams: chunk.to_vec(),
-            }).await;
+            // Send initial subscribe commands, batched by ws_max_batch_size
+            let max_batch_size = self.exchange_config.ws_max_batch_size;
+            let delay_ms = self.exchange_config.ws_subscription_delay_ms;
+            let mut total_subscribed = 0;
+            let batches: Vec<_> = chunk.chunks(max_batch_size).collect();
+            let batch_count = batches.len();
+            
+            for (idx, batch) in batches.into_iter().enumerate() {
+                let _ = cmd_tx.send(WorkerCommand::Subscribe {
+                    streams: batch.to_vec(),
+                }).await;
+                total_subscribed += batch.len();
+                
+                // Add delay between batches (except after the last one)
+                if delay_ms > 0 && idx < batch_count - 1 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
+            }
             
             info!(
                 exchange = %self.exchange_config.name,
                 worker_id = worker_id,
-                streams = chunk.len(),
+                streams = total_subscribed,
+                batches = batch_count,
+                delay_ms = delay_ms,
                 "Worker spawned and subscribed"
             );
         }

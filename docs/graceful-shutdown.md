@@ -14,6 +14,7 @@ sequenceDiagram
     participant WS as WebSocket Workers
     participant BA as Batch Aggregator
     participant S3 as S3 Uploaders
+    participant MS as Metrics Server
     
     Signal->>Main: SIGINT received
     Main->>Main: notify_waiters()
@@ -45,6 +46,15 @@ sequenceDiagram
     Main->>S3: wait with 30s timeout each
     S3->>S3: Process remaining batches
     S3->>Main: Task complete
+    
+    Note over Main: Step 7: Wait for metrics server
+    Main->>MS: wait with 5s timeout
+    MS->>MS: Stop accepting connections
+    MS->>MS: Finish in-flight requests
+    MS->>Main: Task complete
+    
+    Note over Main: Step 8: Shutdown metrics
+    Main->>Main: metrics.shutdown()
     
     Main->>Main: Exit process
 ```
@@ -194,6 +204,58 @@ async fn drain_remaining_batches(&mut self, timeout: Duration) {
 }
 ```
 
+### Step 7: Wait for Metrics Server
+
+**Purpose**: Gracefully shutdown HTTP metrics endpoint
+
+**Code**:
+```rust
+match tokio::time::timeout(Duration::from_secs(5), metrics_handle).await {
+    Ok(Ok(())) => info!("Metrics server stopped successfully"),
+    Ok(Err(e)) => error!("Metrics server task error: {}", e),
+    Err(_) => error!("Metrics server shutdown timed out"),
+}
+```
+
+**Effect**:
+- Metrics server stops accepting new connections
+- In-flight HTTP requests complete gracefully
+- Server task exits cleanly
+
+**Timeout**: 5 seconds
+
+**Server Shutdown Logic**:
+```rust
+// Metrics server receives shutdown signal
+let shutdown_signal = self.shutdown.clone();
+let graceful_shutdown = async move {
+    shutdown_signal.notified().await;
+    info!("Metrics server received shutdown signal");
+};
+
+axum::serve(listener, app)
+    .with_graceful_shutdown(graceful_shutdown)
+    .await
+```
+
+### Step 8: Shutdown OpenTelemetry
+
+**Purpose**: Flush remaining metrics and clean up resources
+
+**Code**:
+```rust
+if let Err(e) = metrics.shutdown() {
+    error!("Failed to shutdown metrics: {}", e);
+}
+```
+
+**Effect**:
+- Flushes any buffered metrics
+- Closes OpenTelemetry providers
+- Releases metrics resources
+
+**Timeout**: None (synchronous shutdown)
+
 ## Data Loss Scenarios
 
 ### Scenario 1: Messages in WebSocket Buffer
@@ -263,7 +325,8 @@ async fn drain_remaining_batches(&mut self, timeout: Duration) {
 - WebSocket drain: 2 seconds
 - Batch aggregator: 10 seconds
 - S3 uploaders: 30 seconds each
-- Total shutdown: ~45 seconds
+- Metrics server: 5 seconds
+- Total shutdown: ~50 seconds (assuming 1 uploader)
 
 ### Increasing Timeouts
 
@@ -279,6 +342,7 @@ async fn drain_remaining_batches(&mut self, timeout: Duration) {
 tokio::time::sleep(Duration::from_secs(5)).await;  // Increase drain time
 tokio::time::timeout(Duration::from_secs(30), aggregator_handle).await;  // Increase aggregator timeout
 self.drain_remaining_batches(Duration::from_secs(60)).await;  // Increase uploader timeout
+tokio::time::timeout(Duration::from_secs(10), metrics_handle).await;  // Increase metrics server timeout
 ```
 
 ### Decreasing Timeouts
@@ -300,10 +364,15 @@ self.drain_remaining_batches(Duration::from_secs(60)).await;  // Increase upload
 - High message rate during shutdown
 
 **Solutions**:
-1. Check batch aggregator logs (how many batches flushed)
-2. Check S3 uploader logs (upload times)
-3. Increase timeouts if legitimate work in progress
-4. Investigate S3 performance issues
+1. Monitor metrics endpoint during shutdown to see real-time progress:
+   ```bash
+   # Watch shutdown metrics in real-time
+   watch -n 1 'curl -s http://localhost:9090/metrics | grep -E "(batch_active|s3_uploads_total|worker_active_streams)"'
+   ```
+2. Check batch aggregator logs (how many batches flushed)
+3. Check S3 uploader logs (upload times)
+4. Increase timeouts if legitimate work in progress
+5. Investigate S3 performance issues
 
 ### Symptom: Data Missing After Restart
 
@@ -346,12 +415,27 @@ self.drain_remaining_batches(Duration::from_secs(60)).await;  // Increase upload
 
 ### 1. Monitor Shutdown Metrics
 
-Track:
+Track during shutdown:
 - Shutdown duration
 - Messages processed during shutdown
 - Batches flushed
 - Uploads completed
 - Timeouts hit
+
+**Key Metrics to Watch** (via `/metrics` endpoint):
+```promql
+# Active batches being flushed (should decrease to 0)
+batch_active
+
+# S3 uploads completing
+rate(s3_uploads_total[1m])
+
+# Active WebSocket streams (should decrease to 0)
+sum(worker_active_streams)
+
+# Upload failures (should remain at 0)
+rate(s3_upload_failures_total[1m])
+```
 
 ### 2. Test Shutdown Under Load
 
@@ -384,6 +468,14 @@ Ensure logs capture:
 - Timeout events
 - Error conditions
 
+### 6. Metrics During Shutdown
+
+The metrics server:
+- Remains active during steps 1-6
+- Continues exposing metrics until data pipeline completes
+- Allows monitoring shutdown progress via `/metrics` endpoint
+- Shuts down cleanly in step 7 after all data is uploaded
+
 ## Configuration Recommendations
 
 ### Production
@@ -393,6 +485,7 @@ Ensure logs capture:
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const AGGREGATOR_TIMEOUT: Duration = Duration::from_secs(30);
 const UPLOADER_TIMEOUT: Duration = Duration::from_secs(60);
+const METRICS_TIMEOUT: Duration = Duration::from_secs(10);
 ```
 
 ### Development
@@ -402,6 +495,7 @@ const UPLOADER_TIMEOUT: Duration = Duration::from_secs(60);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const AGGREGATOR_TIMEOUT: Duration = Duration::from_secs(5);
 const UPLOADER_TIMEOUT: Duration = Duration::from_secs(10);
+const METRICS_TIMEOUT: Duration = Duration::from_secs(5);
 ```
 
 ### Testing
@@ -411,4 +505,5 @@ const UPLOADER_TIMEOUT: Duration = Duration::from_secs(10);
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
 const AGGREGATOR_TIMEOUT: Duration = Duration::from_millis(500);
 const UPLOADER_TIMEOUT: Duration = Duration::from_secs(1);
+const METRICS_TIMEOUT: Duration = Duration::from_secs(1);
 ```
