@@ -4,7 +4,7 @@ use market_chronicle_core::config::MarketType;
 #[test]
 fn test_partition_key_hour_rounding() {
     let msg = MarketMessage {
-        timestamp: 1705334567890, // Some arbitrary timestamp with ms
+        local_timestamp: 1705334567890, // Some arbitrary timestamp with ms
         exchange: "binance".to_string(),
         market_type: MarketType::Spot,
         stream_type: StreamType::Trade,

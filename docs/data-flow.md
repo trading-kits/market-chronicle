@@ -222,7 +222,7 @@ sequenceDiagram
 
 ```toml
 [s3]
-upload_worker_count = 2
+upload_worker_count = "auto"  # Will compute ~2 workers for typical low volume
 batch_size = 500
 batch_timeout_ms = 10000
 compression_level = 5
@@ -234,7 +234,7 @@ Benefits: Lower latency, good compression
 
 ```toml
 [s3]
-upload_worker_count = 4
+upload_worker_count = "auto"  # Will compute ~4-6 workers based on partitions
 batch_size = 1000
 batch_timeout_ms = 5000
 compression_level = 3
@@ -246,7 +246,7 @@ Benefits: Balanced throughput and latency
 
 ```toml
 [s3]
-upload_worker_count = 8
+upload_worker_count = "auto"  # Will compute up to 16 workers for high partition count
 batch_size = 2000
 batch_timeout_ms = 2000
 compression_level = 1

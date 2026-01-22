@@ -87,7 +87,7 @@ impl BybitWebSocket {
         let timestamp = msg.ts.unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
         
         Ok(Some(MarketMessage {
-            timestamp,
+            local_timestamp: timestamp,
             exchange: "bybit".to_string(),
             market_type: self.market_type,
             stream_type,

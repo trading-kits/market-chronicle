@@ -119,15 +119,22 @@ async fn main() -> Result<()> {
     );
     let aggregator_handle = tokio::spawn(aggregator.run());
     
+    // Resolve S3 upload worker count (may be auto-computed)
+    let upload_worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker);
+    let estimated_partitions = config.estimate_partition_count();
+    
     // Spawn S3 upload workers with individual channels
     info!(
-        worker_count = config.s3.upload_worker_count,
+        worker_count = upload_worker_count,
+        estimated_partitions = estimated_partitions,
+        partitions_per_worker = config.s3.partitions_per_worker,
+        mode = ?config.s3.upload_worker_count,
         "Starting S3 upload workers"
     );
     
     // Create individual channels for each uploader
     let mut uploader_channels = Vec::new();
-    for _ in 0..config.s3.upload_worker_count {
+    for _ in 0..upload_worker_count {
         let (tx, rx) = mpsc::channel(100);
         uploader_channels.push((tx, rx));
     }

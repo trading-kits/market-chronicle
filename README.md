@@ -72,7 +72,8 @@ region = "us-east-1"
 prefix = "dev"
 access_key_id = "minioadmin"
 secret_access_key = "minioadmin"
-upload_worker_count = 2
+upload_worker_count = "auto"  # Auto-compute based on workload
+# partitions_per_worker = 75  # Optional tuning (default: 75)
 batch_size = 500
 batch_timeout_ms = 10000
 compression_level = 3
@@ -170,7 +171,8 @@ region = "us-east-1"
 prefix = "production"
 access_key_id = "your-key"
 secret_access_key = "your-secret"
-upload_worker_count = 4
+upload_worker_count = "auto"  # Auto-compute based on workload
+# partitions_per_worker = 75  # Optional tuning (default: 75)
 batch_size = 1000
 batch_timeout_ms = 5000
 compression_level = 3
@@ -644,7 +646,7 @@ aws s3 ls s3://your-bucket --endpoint-url http://localhost:9000
 ```toml
 batch_size = 500
 batch_timeout_ms = 10000
-upload_worker_count = 2
+upload_worker_count = "auto"  # Typically 2 workers
 compression_level = 5
 ```
 
@@ -652,7 +654,7 @@ compression_level = 5
 ```toml
 batch_size = 2000
 batch_timeout_ms = 2000
-upload_worker_count = 8
+upload_worker_count = "auto"  # Scales up to 16 workers
 compression_level = 1
 ```
 

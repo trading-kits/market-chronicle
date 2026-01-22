@@ -38,8 +38,28 @@ secret_access_key = "minioadmin"
 # Number of parallel S3 upload workers
 # - More workers = higher upload throughput
 # - More workers = more memory usage
-# Recommended: 4-8 for production
-upload_worker_count = 4
+# 
+# Options:
+#   "auto" - Automatically compute based on expected partition count
+#            Formula: partitions / partitions_per_worker, min 2, max 16
+#            Recommended for most deployments
+#   <number> - Manual worker count (e.g., 4, 8, 16)
+#            Use when you need precise control
+#
+# Recommended: "auto" for most cases, or 4-8 for production
+upload_worker_count = "auto"
+
+# Partitions per worker ratio (only used when upload_worker_count = "auto")
+# - Higher value = fewer workers (more partitions per worker)
+# - Lower value = more workers (fewer partitions per worker)
+# 
+# Tune based on your workload:
+#   75-100  - Default, works well for most workloads
+#   50      - High volume, small batches, or slow S3
+#   100-150 - Low volume, large batches, or fast S3
+#
+# Default: 75 (omit this line to use default)
+# partitions_per_worker = 75
 
 # Number of messages per batch before flushing to S3
 # - Larger batches = fewer S3 uploads, better compression ratio

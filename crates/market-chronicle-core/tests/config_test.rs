@@ -28,6 +28,8 @@ kline_intervals = []
 ws_connection_rate = 5
 ws_streams_per_connection = 1024
 ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0
 "#;
     
     let config: Config = toml::from_str(toml_content).expect("Failed to parse config");
@@ -60,8 +62,219 @@ fn test_exchange_key() {
         kline_intervals: vec![],
         ws_connection_rate: 5,
         ws_streams_per_connection: 1024,
-        ws_max_connections = 300,
+        ws_max_connections: 300,
+        ws_max_batch_size: 200,
+        ws_subscription_delay_ms: 0,
     };
     
     assert_eq!(config.exchange_key(), "binance-spot");
+}
+
+#[test]
+fn test_worker_count_auto() {
+    let toml_auto = r#"
+[s3]
+endpoint = "http://localhost:9000"
+bucket = "test-bucket"
+region = "us-east-1"
+prefix = "test"
+access_key_id = "test"
+secret_access_key = "test"
+upload_worker_count = "auto"
+batch_size = 1000
+batch_timeout_ms = 5000
+compression_level = 3
+
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+ws_endpoint = "wss://test"
+rest_endpoint = "https://test"
+mode = "explicit"
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+symbol_refresh_interval_s = 0
+streams = ["trade", "depth", "kline"]
+kline_intervals = ["1m", "5m", "1h"]
+ws_connection_rate = 5
+ws_streams_per_connection = 1024
+ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0
+"#;
+    
+    let config: Config = toml::from_str(toml_auto).expect("Failed to parse auto config");
+    let worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker);
+    
+    // 3 symbols × (1 trade + 1 depth + 3 klines) = 15 partitions
+    // 15 / 75 = 0.2, rounds up to min of 2
+    assert_eq!(worker_count, 2);
+}
+
+#[test]
+fn test_worker_count_manual() {
+    let toml_manual = r#"
+[s3]
+endpoint = "http://localhost:9000"
+bucket = "test-bucket"
+region = "us-east-1"
+prefix = "test"
+access_key_id = "test"
+secret_access_key = "test"
+upload_worker_count = 8
+batch_size = 1000
+batch_timeout_ms = 5000
+compression_level = 3
+
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+ws_endpoint = "wss://test"
+rest_endpoint = "https://test"
+mode = "explicit"
+symbols = ["BTCUSDT"]
+symbol_refresh_interval_s = 0
+streams = ["trade"]
+kline_intervals = []
+ws_connection_rate = 5
+ws_streams_per_connection = 1024
+ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0
+"#;
+    
+    let config: Config = toml::from_str(toml_manual).expect("Failed to parse manual config");
+    let worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker);
+    
+    // Manual count should be used directly
+    assert_eq!(worker_count, 8);
+}
+
+#[test]
+fn test_partition_estimation() {
+    let config = ExchangeConfig {
+        name: "binance".to_string(),
+        market_type: MarketType::Spot,
+        ws_endpoint: "wss://test".to_string(),
+        rest_endpoint: "https://test".to_string(),
+        mode: SubscriptionMode::Explicit,
+        symbols: vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
+        symbol_refresh_interval_s: 0,
+        streams: vec!["trade".to_string(), "depth".to_string(), "kline".to_string()],
+        kline_intervals: vec!["1m".to_string(), "5m".to_string()],
+        ws_connection_rate: 5,
+        ws_streams_per_connection: 1024,
+        ws_max_connections: 300,
+        ws_max_batch_size: 200,
+        ws_subscription_delay_ms: 0,
+    };
+    
+    // 2 symbols × (1 trade + 1 depth + 2 klines) = 8 partitions
+    assert_eq!(config.estimate_partition_count(), 8);
+}
+
+#[test]
+fn test_partition_estimation_with_markprice() {
+    let config = ExchangeConfig {
+        name: "binance".to_string(),
+        market_type: MarketType::Perpetual,
+        ws_endpoint: "wss://test".to_string(),
+        rest_endpoint: "https://test".to_string(),
+        mode: SubscriptionMode::Explicit,
+        symbols: vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
+        symbol_refresh_interval_s: 0,
+        streams: vec!["aggTrade".to_string(), "markPrice".to_string()],
+        kline_intervals: vec![],
+        ws_connection_rate: 5,
+        ws_streams_per_connection: 1024,
+        ws_max_connections: 300,
+        ws_max_batch_size: 200,
+        ws_subscription_delay_ms: 0,
+    };
+    
+    // 2 symbols × 1 aggTrade + 1 markPrice (global) = 3 partitions
+    assert_eq!(config.estimate_partition_count(), 3);
+}
+
+#[test]
+fn test_worker_count_custom_ratio() {
+    let toml_custom = r#"
+[s3]
+endpoint = "http://localhost:9000"
+bucket = "test-bucket"
+region = "us-east-1"
+prefix = "test"
+access_key_id = "test"
+secret_access_key = "test"
+upload_worker_count = "auto"
+partitions_per_worker = 50
+batch_size = 1000
+batch_timeout_ms = 5000
+compression_level = 3
+
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+ws_endpoint = "wss://test"
+rest_endpoint = "https://test"
+mode = "explicit"
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+symbol_refresh_interval_s = 0
+streams = ["trade", "depth", "kline"]
+kline_intervals = ["1m", "5m", "1h"]
+ws_connection_rate = 5
+ws_streams_per_connection = 1024
+ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0
+"#;
+    
+    let config: Config = toml::from_str(toml_custom).expect("Failed to parse custom ratio config");
+    let worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker);
+    
+    // 3 symbols × (1 trade + 1 depth + 3 klines) = 15 partitions
+    // 15 / 50 = 0.3, rounds up to min of 2
+    assert_eq!(config.s3.partitions_per_worker, 50);
+    assert_eq!(worker_count, 2);
+}
+
+#[test]
+fn test_worker_count_high_partition_ratio() {
+    let toml_high = r#"
+[s3]
+endpoint = "http://localhost:9000"
+bucket = "test-bucket"
+region = "us-east-1"
+prefix = "test"
+access_key_id = "test"
+secret_access_key = "test"
+upload_worker_count = "auto"
+partitions_per_worker = 25
+batch_size = 1000
+batch_timeout_ms = 5000
+compression_level = 3
+
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+ws_endpoint = "wss://test"
+rest_endpoint = "https://test"
+mode = "explicit"
+symbols = ["BTC1", "BTC2", "BTC3", "BTC4", "BTC5"]
+symbol_refresh_interval_s = 0
+streams = ["trade"]
+kline_intervals = []
+ws_connection_rate = 5
+ws_streams_per_connection = 1024
+ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 0
+"#;
+    
+    let config: Config = toml::from_str(toml_high).expect("Failed to parse high ratio config");
+    let worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker);
+    
+    // 5 symbols × 1 trade = 5 partitions
+    // 5 / 25 = 0.2, rounds up to min of 2
+    assert_eq!(config.s3.partitions_per_worker, 25);
+    assert_eq!(worker_count, 2);
 }

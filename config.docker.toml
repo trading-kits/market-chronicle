@@ -15,7 +15,8 @@ access_key_id = "minioadmin"
 secret_access_key = "minioadmin"
 
 # Small settings for quick testing
-upload_worker_count = 4
+upload_worker_count = "auto"  # Auto-compute based on partition count
+# partitions_per_worker = 75  # Optional tuning parameter
 batch_size = 10000              # Small batch size for quick flushing
 batch_timeout_ms = 60000      # 60 seconds timeout
 compression_level = 1        # Fast compression for testing

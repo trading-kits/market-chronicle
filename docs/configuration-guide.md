@@ -29,7 +29,7 @@ region = "us-east-1"                         # AWS region
 prefix = "production"                        # Prefix for all S3 keys
 access_key_id = "your-access-key"            # S3 access key
 secret_access_key = "your-secret-key"        # S3 secret key
-upload_worker_count = 4                      # Number of parallel upload workers
+upload_worker_count = "auto"                 # Auto-compute workers (or use explicit number like 4)
 batch_size = 1000                            # Messages per batch before flush
 batch_timeout_ms = 5000                      # Max age of batch before flush (milliseconds)
 compression_level = 3                        # zstd compression level (1-22)
@@ -78,15 +78,39 @@ compression_level = 3                        # zstd compression level (1-22)
 - **Security**: Store in environment variables or secrets manager
 
 #### `upload_worker_count`
-- **Type**: Integer
-- **Required**: Yes
-- **Range**: 1-100
-- **Default**: 4
+- **Type**: Integer or String ("auto")
+- **Required**: No (defaults to "auto")
+- **Range**: 1-100 for manual, 2-16 for auto
+- **Default**: "auto"
 - **Description**: Number of concurrent S3 upload workers
+- **Options**:
+  - `"auto"`: Automatically compute based on partition count
+    - Formula: `partitions / partitions_per_worker`, min 2, max 16
+    - Partitions = unique combinations of (exchange, market_type, stream_type, symbol)
+    - Follows same pattern as websocket worker auto-scaling
+  - `<number>`: Manual worker count (e.g., 4, 8, 16)
 - **Tuning**:
   - More workers = higher upload throughput
   - More workers = more memory usage
-  - Formula: `ceil(target_batches_per_second * avg_upload_time_seconds)`
+  - Use "auto" for most deployments (recommended)
+  - Use manual count when you need precise control or testing
+
+#### `partitions_per_worker`
+- **Type**: Integer
+- **Required**: No (defaults to 75)
+- **Range**: 1-1000
+- **Default**: 75
+- **Description**: Target number of partitions per worker (only used when `upload_worker_count = "auto"`)
+- **Purpose**: Fine-tune the auto-scaling ratio without hardcoding
+- **Tuning**:
+  - **Lower values (50)**: More workers, better for high-volume workloads
+  - **Default (75)**: Balanced, works well for most deployments
+  - **Higher values (100-150)**: Fewer workers, better for low-volume workloads
+- **When to adjust**:
+  - High message volume + small `batch_size` → use 50
+  - Slow S3 or high upload latency → use 50
+  - Low message volume + large `batch_size` → use 100
+  - Fast S3 or local MinIO → use 100
 
 #### `batch_size`
 - **Type**: Integer

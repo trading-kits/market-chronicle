@@ -27,8 +27,13 @@ impl Config {
             return Err(Error::Config("S3 bucket cannot be empty".to_string()));
         }
         
-        if self.s3.upload_worker_count == 0 {
+        let resolved_worker_count = self.s3.upload_worker_count.resolve(&self.exchanges, self.s3.partitions_per_worker);
+        if resolved_worker_count == 0 {
             return Err(Error::Config("S3 upload_worker_count must be > 0".to_string()));
+        }
+        
+        if self.s3.partitions_per_worker == 0 {
+            return Err(Error::Config("S3 partitions_per_worker must be > 0".to_string()));
         }
         
         if self.s3.batch_size == 0 {
@@ -42,6 +47,13 @@ impl Config {
         
         Ok(())
     }
+    
+    /// Calculate the total expected number of unique partitions across all exchanges
+    pub fn estimate_partition_count(&self) -> usize {
+        self.exchanges.iter()
+            .map(|ex| ex.estimate_partition_count())
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,10 +64,71 @@ pub struct S3Config {
     pub prefix: String,
     pub access_key_id: String,
     pub secret_access_key: String,
-    pub upload_worker_count: usize,
+    #[serde(default = "default_upload_worker_count")]
+    pub upload_worker_count: WorkerCount,
+    #[serde(default = "default_partitions_per_worker")]
+    pub partitions_per_worker: usize,
     pub batch_size: usize,
     pub batch_timeout_ms: u64,
     pub compression_level: i32,
+}
+
+fn default_upload_worker_count() -> WorkerCount {
+    WorkerCount::Auto("auto".to_string())
+}
+
+fn default_partitions_per_worker() -> usize {
+    75
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum WorkerCount {
+    Manual(usize),
+    Auto(String),
+}
+
+impl WorkerCount {
+    /// Resolve worker count based on configuration
+    /// 
+    /// Formula: Similar to websocket workers, compute based on expected workload
+    /// - Each partition (exchange + market_type + stream_type + symbol) creates separate batches
+    /// - Workers process batches in round-robin
+    /// - Rule of thumb: 1 worker per 50-100 active partitions, min 2, max 16
+    pub fn resolve(&self, exchanges: &[ExchangeConfig], partitions_per_worker: usize) -> usize {
+        match self {
+            WorkerCount::Manual(n) => *n,
+            WorkerCount::Auto(s) if s == "auto" => {
+                let total_partitions: usize = exchanges.iter()
+                    .map(|ex| ex.estimate_partition_count())
+                    .sum();
+                
+                // Auto-compute based on partition count and configurable ratio
+                // 
+                // Formula: workers = total_partitions / partitions_per_worker
+                // 
+                // The partitions_per_worker ratio (default: 75) is based on:
+                // - Batch creation: ~1-10 batches/sec per partition (depends on message volume)
+                // - S3 upload: ~0.1-1 sec per batch (depends on size, compression, network)
+                // - Queue depth: 100 batches buffer
+                // - Safety margin: Better slightly over- than under-provisioned
+                //
+                // Tune via config:
+                // - High volume + small batches → use 50 (more workers)
+                // - Low volume + large batches → use 100 (fewer workers)
+                //
+                // Min 2 workers (for low volume), max 16 (diminishing returns beyond this)
+                if total_partitions == 0 {
+                    2 // Default when no exchanges configured yet
+                } else {
+                    let divisor = partitions_per_worker.max(1); // Prevent division by zero
+                    let calculated = (total_partitions + divisor - 1) / divisor; // ceiling division
+                    calculated.max(2).min(16)
+                }
+            }
+            WorkerCount::Auto(_) => 4, // Fallback for invalid string values
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,6 +152,36 @@ pub struct ExchangeConfig {
 }
 
 impl ExchangeConfig {
+    /// Estimate the number of unique partitions this exchange will produce
+    /// 
+    /// Partitions are created per (exchange, market_type, stream_type, symbol, hour)
+    /// - Most streams create 1 partition per symbol (trade, depth, aggTrade, etc.)
+    /// - Kline streams create N partitions per symbol (one per interval)
+    /// - MarkPrice is global (not per symbol), creates 1 partition total
+    pub fn estimate_partition_count(&self) -> usize {
+        let symbol_count = self.symbols.len().max(1); // min 1 for safety
+        let mut partitions = 0;
+        
+        for stream in &self.streams {
+            match stream.as_str() {
+                "kline" => {
+                    // Each kline interval creates a separate partition per symbol
+                    partitions += symbol_count * self.kline_intervals.len();
+                }
+                "markPrice" => {
+                    // markPrice is global, not per-symbol
+                    partitions += 1;
+                }
+                _ => {
+                    // trade, depth, aggTrade, publicTrade, orderbook: 1 per symbol
+                    partitions += symbol_count;
+                }
+            }
+        }
+        
+        partitions
+    }
+    
     fn validate(&self) -> Result<()> {
         // Validate name
         if self.name.is_empty() {

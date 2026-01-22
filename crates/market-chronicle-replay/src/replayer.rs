@@ -288,13 +288,13 @@ impl Replayer {
         }
         
         // Sort by timestamp
-        messages.sort_by_key(|m| m.timestamp);
+        messages.sort_by_key(|m| m.local_timestamp);
         
-        let mut last_ts = messages[0].timestamp;
+        let mut last_ts = messages[0].local_timestamp;
         
         for msg in messages {
             // Calculate delay based on speed
-            let delay_ms = ((msg.timestamp - last_ts) as f64 / speed) as u64;
+            let delay_ms = ((msg.local_timestamp - last_ts) as f64 / speed) as u64;
             if delay_ms > 0 && speed > 0.0 {
                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             }
@@ -308,7 +308,7 @@ impl Replayer {
                 println!("{}", json);
             }
             
-            last_ts = msg.timestamp;
+            last_ts = msg.local_timestamp;
             *total_count += 1;
         }
         

@@ -4,8 +4,8 @@ use crate::config::MarketType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketMessage {
-    /// Unix timestamp in milliseconds
-    pub timestamp: i64,
+    /// Unix timestamp in milliseconds (local receive time)
+    pub local_timestamp: i64,
     pub exchange: String,
     pub market_type: MarketType,
     pub stream_type: StreamType,
@@ -76,7 +76,7 @@ pub struct PartitionKey {
 impl PartitionKey {
     pub fn from_message(msg: &MarketMessage) -> Self {
         // Round timestamp to hour
-        let hour = (msg.timestamp / 3600000) * 3600000;
+        let hour = (msg.local_timestamp / 3600000) * 3600000;
         
         Self {
             exchange: msg.exchange.clone(),
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_partition_key_hour_rounding() {
         let msg = MarketMessage {
-            timestamp: 1705334567890, // 2024-01-15 12:42:47.890
+            local_timestamp: 1705334567890, // 2024-01-15 12:42:47.890
             exchange: "binance".to_string(),
             market_type: MarketType::Spot,
             stream_type: StreamType::Trade,

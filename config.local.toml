@@ -15,7 +15,8 @@ access_key_id = "AKIAJHI44AIJO5Y4O2SQ"
 secret_access_key = "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"
 
 # Small settings for quick testing
-upload_worker_count = 4
+upload_worker_count = "auto"  # or explicit number like 4
+# partitions_per_worker = 75  # optional, only used with "auto"
 batch_size = 10000              # Small batch size for quick flushing
 batch_timeout_ms = 60000      # 60 seconds timeout
 compression_level = 1        # Fast compression for testing
@@ -39,8 +40,8 @@ streams = ["trade", "depth", "kline"]
 kline_intervals = ["1m"]
 
 # Binance rate limits
+ws_max_connections = 300
 ws_connection_rate = 5
 ws_streams_per_connection = 400
-ws_max_connections = 300
 ws_max_batch_size = 200  # Maximum streams per subscription message
 ws_subscription_delay_ms = 100  # Delay between subscription batches (milliseconds)

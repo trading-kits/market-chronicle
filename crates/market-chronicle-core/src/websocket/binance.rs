@@ -103,7 +103,7 @@ impl BinanceWebSocket {
         };
         
         Ok(Some(MarketMessage {
-            timestamp,
+            local_timestamp: timestamp,
             exchange: "binance".to_string(),
             market_type: self.market_type,
             stream_type,
