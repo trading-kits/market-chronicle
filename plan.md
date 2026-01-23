@@ -186,7 +186,7 @@
   - Tradeoff: Higher storage cost for better reliability and rate limits
 
 **Build & Development:**
-- **Makefile** for common development tasks:
+- **justfile** for common development tasks:
   - Build (debug/release)
   - Run tests (unit, integration)
   - Linting and formatting (clippy, rustfmt)
@@ -195,12 +195,12 @@
   - Clean build artifacts
   - Install dependencies
   - **✅ Docker Compose commands:**
-    - `make setup-dev` - Start all services (MinIO, PostgreSQL, LakeFS)
-    - `make stop-dev` - Stop services
-    - `make logs-dev` - View logs
-    - `make clean-dev` - Remove all containers and volumes
-    - `make minio-console` - Open MinIO console
-    - `make lakefs-console` - Open LakeFS console
+    - `just setup-dev` - Start all services (MinIO, PostgreSQL, LakeFS)
+    - `just stop-dev` - Stop services
+    - `just logs-dev` - View logs
+    - `just clean-dev` - Remove all containers and volumes
+    - `just minio-console` - Open MinIO console
+    - `just lakefs-console` - Open LakeFS console
 
 **Documentation:**
 - **Comprehensive documentation** in `docs/`:

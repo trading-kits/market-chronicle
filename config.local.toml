@@ -1,7 +1,7 @@
 # Market Chronicle - Manual Testing Configuration
 #
 # This is a minimal configuration for local development and manual testing.
-# Start the dev environment first: make setup-dev
+# Start the dev environment first: just setup-dev
 
 [s3]
 # Local MinIO instance

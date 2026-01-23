@@ -34,7 +34,7 @@ cd market-chronicle
 
 2. **Start development services** (MinIO + LakeFS + Prometheus + Grafana):
 ```bash
-make setup-dev
+just setup-dev
 ```
 
 This starts:
@@ -56,8 +56,8 @@ Edit `config.toml` to configure exchanges and symbols.
 
 4. **Build and run**:
 ```bash
-make build
-make run
+just build
+just run
 ```
 
 ### First Run
@@ -293,13 +293,13 @@ The project includes a complete Docker Compose setup with all dependencies:
 
 ```bash
 # Build and start all services (MinIO, LakeFS, Prometheus, Grafana, Market Chronicle)
-make docker-up
+just docker-up
 
 # View logs
-make docker-logs
+just docker-logs
 
 # Stop all services
-make docker-down
+just docker-down
 ```
 
 This starts the complete stack:
@@ -314,7 +314,7 @@ This starts the complete stack:
 ```bash
 cp config.docker.toml config.toml
 # Edit config.toml with your settings
-make docker-rebuild
+just docker-rebuild
 ```
 
 ### Docker (Standalone)
@@ -501,7 +501,7 @@ The included `docker-compose.yml` provides a complete monitoring stack:
 
 ```bash
 # Start all services including Prometheus + Grafana
-make setup-dev
+just setup-dev
 
 # Access Grafana at http://localhost:3000 (admin/admin)
 # Prometheus datasource is pre-configured
@@ -535,30 +535,30 @@ See [docs/metrics.md](docs/metrics.md) for complete alerting configuration.
 ### Build Commands
 
 ```bash
-make build          # Build all crates (debug)
-make build-release  # Build all crates (release)
-make test           # Run all tests
-make lint           # Run clippy linter
-make fmt            # Format code
-make run            # Run main service
+just build          # Build all crates (debug)
+just build-release  # Build all crates (release)
+just test           # Run all tests
+just lint           # Run clippy linter
+just fmt            # Format code
+just run            # Run main service
 ```
 
 ### Development Environment
 
 ```bash
-make setup-dev      # Start MinIO + LakeFS
-make stop-dev       # Stop development services
-make clean-dev      # Remove all containers and volumes
-make logs-dev       # View logs from all services
-make minio-console  # Open MinIO console
-make lakefs-console # Open LakeFS console
+just setup-dev      # Start MinIO + LakeFS
+just stop-dev       # Stop development services
+just clean-dev      # Remove all containers and volumes
+just logs-dev       # View logs from all services
+just minio-console  # Open MinIO console
+just lakefs-console # Open LakeFS console
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-make test
+just test
 
 # Run specific test
 cargo test --test config_test
@@ -669,7 +669,7 @@ Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes with tests
-4. Run `make lint` and `make test`
+4. Run `just lint` and `just test`
 5. Submit a pull request
 
 ## Support

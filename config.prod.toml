@@ -1,0 +1,166 @@
+# Market Chronicle - Production Configuration
+#
+# This configuration is optimized for production deployments with:
+# - Security best practices (environment variables for credentials)
+# - Performance-optimized batch and compression settings
+# - Production-grade S3 configuration
+# - Sensible defaults for high-volume data collection
+
+# ==============================================================================
+# S3 Configuration
+# ==============================================================================
+[s3]
+# S3-compatible endpoint URL
+# - AWS S3: "https://s3.amazonaws.com" or "https://s3.{region}.amazonaws.com"
+# - For other providers, adjust accordingly
+endpoint = "https://s3.amazonaws.com"
+
+# S3 bucket name for production market data
+# Note: Bucket must exist before starting the service
+bucket = "market-data-production"
+
+# AWS region for the S3 bucket
+region = "us-east-1"
+
+# Production prefix to separate from other environments
+prefix = "production"
+
+# S3 credentials - SECURITY: Use environment variables
+# Set these environment variables before starting:
+#   export AWS_ACCESS_KEY_ID=your_access_key
+#   export AWS_SECRET_ACCESS_KEY=your_secret_key
+# Or use IAM roles for EC2/ECS/EKS deployments (preferred)
+access_key_id = "${AWS_ACCESS_KEY_ID}"
+secret_access_key = "${AWS_SECRET_ACCESS_KEY}"
+
+# Auto-compute worker count based on partition count
+# Recommended for production: scales automatically with workload
+upload_worker_count = "auto"
+
+# Partitions per worker ratio (only used when upload_worker_count = "auto")
+# Default: 75 (good balance for most production workloads)
+# Tune based on your S3 performance and workload characteristics
+partitions_per_worker = 75
+
+# Production batch settings for optimal throughput
+# Larger batches = better compression, fewer S3 operations
+batch_size = 2000
+
+# Batch timeout: ensures timely upload even for low-volume symbols
+# 5 seconds provides good balance between latency and efficiency
+batch_timeout_ms = 5000
+
+# Compression level: balanced speed and ratio for production
+# Level 3 provides good compression with minimal CPU overhead
+compression_level = 3
+
+# ==============================================================================
+# Exchange Configurations
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Binance Spot - Major Trading Pairs
+# ------------------------------------------------------------------------------
+[[exchanges]]
+name = "binance"
+market_type = "spot"
+ws_endpoint = "wss://stream.binance.com:9443/stream"
+rest_endpoint = "https://api.binance.com"
+
+# Explicit mode with curated symbol list for production
+mode = "explicit"
+symbols = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
+    "XRPUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "AVAXUSDT",
+    "LINKUSDT", "ATOMUSDT", "UNIUSDT", "LTCUSDT", "NEARUSDT"
+]
+symbol_refresh_interval_s = 0
+
+# Comprehensive stream coverage for production
+streams = ["trade", "depth", "kline"]
+kline_intervals = ["1m", "5m", "15m", "1h", "4h", "1d"]
+
+# Binance rate limits - production settings
+ws_connection_rate = 5
+ws_streams_per_connection = 1024
+ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 100
+
+# ------------------------------------------------------------------------------
+# Binance USDT Perpetual Futures
+# ------------------------------------------------------------------------------
+[[exchanges]]
+name = "binance"
+market_type = "perpetual"
+ws_endpoint = "wss://fstream.binance.com/stream"
+rest_endpoint = "https://fapi.binance.com"
+
+mode = "explicit"
+symbols = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
+    "XRPUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "AVAXUSDT"
+]
+symbol_refresh_interval_s = 0
+
+# Futures-specific streams including funding rate data
+streams = ["aggTrade", "depth", "kline", "markPrice"]
+kline_intervals = ["1m", "5m", "15m", "1h", "4h"]
+
+ws_connection_rate = 5
+ws_streams_per_connection = 200
+ws_max_connections = 300
+ws_max_batch_size = 200
+ws_subscription_delay_ms = 100
+
+# ==============================================================================
+# Production Deployment Notes
+# ==============================================================================
+#
+# Security Checklist:
+# -------------------
+# ✓ Use environment variables for AWS credentials
+# ✓ Enable S3 bucket encryption (AES-256 or KMS)
+# ✓ Restrict S3 bucket permissions (least privilege)
+# ✓ Enable S3 access logging for audit trail
+# ✓ Use IAM roles instead of access keys (when on AWS)
+# ✓ Enable VPC endpoints for S3 (reduce costs, improve security)
+#
+# Monitoring:
+# ----------
+# - Set up CloudWatch alarms for S3 upload failures
+# - Monitor WebSocket connection health and reconnection rate
+# - Track message processing latency and batch sizes
+# - Monitor S3 storage costs and data volume trends
+#
+# Scaling Considerations:
+# ----------------------
+# - Each symbol with streams generates multiple partitions
+# - Auto worker count scales with partition count
+# - Consider multiple instances for rate limit distribution
+# - Use different S3 prefixes for multi-instance deployments
+#
+# Cost Optimization:
+# -----------------
+# - Use S3 Intelligent-Tiering for automatic cost savings
+# - Set lifecycle policies to archive old data to Glacier
+# - Monitor data volume per symbol to identify high-cost streams
+# - Adjust batch_size and compression_level for storage efficiency
+#
+# High Availability:
+# ------------------
+# - Run multiple instances in different availability zones
+# - Use different S3 prefixes per instance (production-az1, production-az2)
+# - Implement query-layer deduplication for redundant data
+# - Set up health checks and automatic instance recovery
+#
+# Data Layout:
+# -----------
+# S3 keys use Hive-style partitioning:
+# {prefix}/exchange={exchange}/market_type={type}/stream_type={stream}/
+# symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
+#
+# Example:
+# production/exchange=binance/market_type=spot/stream_type=trade/
+# symbol=BTCUSDT/year=2026/month=01/day=23/hour=14/
+# a1b2c3d4-e5f6-7890-abcd-ef1234567890.ndjson.zst

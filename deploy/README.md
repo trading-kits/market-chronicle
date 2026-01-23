@@ -32,8 +32,8 @@ This directory contains all deployment-specific configuration files for Market C
 # From the project root directory
 docker-compose -f deploy/docker-compose.yml up -d
 
-# Or use the Makefile
-make docker-up
+# Or use justfile
+just docker-up
 ```
 
 ## Services

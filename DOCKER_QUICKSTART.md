@@ -15,7 +15,7 @@ This guide will help you get Market Chronicle running in Docker in under 5 minut
 
 ```bash
 # Start all services (MinIO, LakeFS, Prometheus, Grafana, Market Chronicle)
-make docker-up
+just docker-up
 
 # Or use docker-compose directly
 docker-compose -f deploy/docker-compose.yml up -d
@@ -45,7 +45,7 @@ The default config subscribes to BTCUSDT, ETHUSDT, BNBUSDT on Binance Spot.
 ### 3. Rebuild and Restart (if you changed config)
 
 ```bash
-make docker-rebuild
+just docker-rebuild
 
 # Or manually
 docker-compose build market-chronicle
@@ -58,10 +58,10 @@ docker-compose -f deploy/docker-compose.yml up -d market-chronicle
 
 ```bash
 # Market Chronicle logs only
-make docker-logs
+just docker-logs
 
 # All services
-make docker-logs-all
+just docker-logs-all
 
 # Or use docker-compose
 docker-compose logs -f market-chronicle
@@ -121,10 +121,10 @@ docker-compose -f deploy/docker-compose.yml restart prometheus
 nano config.toml
 
 # 2. Rebuild the service
-make docker-rebuild
+just docker-rebuild
 
 # 3. Check logs for changes
-make docker-logs
+just docker-logs
 ```
 
 ### Scale Up
@@ -142,10 +142,10 @@ docker-compose -f deploy/docker-compose.yml up -d --scale market-chronicle=3
 
 ```bash
 # Stop all services (keeps data)
-make docker-down
+just docker-down
 
 # Stop and remove everything including data
-make docker-clean
+just docker-clean
 ```
 
 ## Monitoring
@@ -291,7 +291,7 @@ docker stats market-chronicle
 # 3. Set RUST_LOG=warn to reduce logging
 
 # Rebuild
-make docker-rebuild
+just docker-rebuild
 ```
 
 ## Performance Tuning
@@ -341,19 +341,19 @@ ws_subscription_delay_ms = 500
 
 ```bash
 # Start
-make docker-up
+just docker-up
 
 # Stop
-make docker-down
+just docker-down
 
 # View logs
-make docker-logs
+just docker-logs
 
 # Rebuild
-make docker-rebuild
+just docker-rebuild
 
 # Clean everything
-make docker-clean
+just docker-clean
 
 # Check health
 curl http://localhost:9090/health
