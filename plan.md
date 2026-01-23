@@ -127,7 +127,7 @@
 - Archive data to S3-compatible storage (LakeFS)
 - **S3 data format:** Newline-delimited JSON (NDJSON) with zstd compression (`.ndjson.zst` files)
 - **Hive-style partitioning** for efficient querying and data organization:
-  - `exchange=<exchange>/market_type=<spot|perpetual>/stream_type=<trade|kline|depth|etc>/symbol=<symbol>/year=<yyyy>/month=<mm>/day=<dd>/hour=<hh>/`
+  - `exchange=<exchange>/market-type=<spot|perpetual>/stream-type=<trade|kline|depth|etc>/symbol=<symbol>/year=<yyyy>/month=<mm>/day=<dd>/hour=<hh>/`
   - Enables partition pruning for optimized query performance
 - **S3 file format example:**
   ```json

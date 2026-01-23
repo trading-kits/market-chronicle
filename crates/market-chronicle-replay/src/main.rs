@@ -15,13 +15,13 @@ struct Args {
     #[arg(short, long, default_value = "config.toml")]
     config: String,
     
-    /// Start time (RFC3339 format, e.g., 2024-01-15T00:00:00Z)
+    /// Start time (RFC3339 format, e.g., 2024-01-15T00:00:00Z). If not specified, replays from the beginning.
     #[arg(short, long)]
-    start_time: String,
+    start_time: Option<String>,
     
-    /// End time (RFC3339 format, e.g., 2024-01-15T23:59:59Z)
+    /// End time (RFC3339 format, e.g., 2024-01-15T23:59:59Z). If not specified, replays to the end.
     #[arg(short, long)]
-    end_time: String,
+    end_time: Option<String>,
     
     /// Filter by exchange name (optional)
     #[arg(short = 'x', long)]

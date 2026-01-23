@@ -39,22 +39,31 @@ impl Replayer {
     
     pub async fn replay(&self, args: Args) -> Result<()> {
         // Parse time range
-        let start_time = DateTime::parse_from_rfc3339(&args.start_time)
-            .context("Invalid start_time format")?
-            .with_timezone(&Utc);
+        let start_time = if let Some(start) = &args.start_time {
+            Some(DateTime::parse_from_rfc3339(start)
+                .context("Invalid start_time format")?
+                .with_timezone(&Utc))
+        } else {
+            None
+        };
         
-        let end_time = DateTime::parse_from_rfc3339(&args.end_time)
-            .context("Invalid end_time format")?
-            .with_timezone(&Utc);
+        let end_time = if let Some(end) = &args.end_time {
+            Some(DateTime::parse_from_rfc3339(end)
+                .context("Invalid end_time format")?
+                .with_timezone(&Utc))
+        } else {
+            None
+        };
         
-        info!(
-            start = %start_time,
-            end = %end_time,
-            "Replay time range"
-        );
+        match (start_time, end_time) {
+            (Some(start), Some(end)) => info!(start = %start, end = %end, "Replay time range"),
+            (Some(start), None) => info!(start = %start, "Replay from start time to end"),
+            (None, Some(end)) => info!(end = %end, "Replay from beginning to end time"),
+            (None, None) => info!("Replay all data from beginning to end"),
+        }
         
         // List matching S3 objects
-        let objects = self.list_objects(&args, &start_time, &end_time).await?;
+        let objects = self.list_objects(&args, start_time.as_ref(), end_time.as_ref()).await?;
         
         info!(files = objects.len(), "Found S3 objects to replay");
         
@@ -112,8 +121,8 @@ impl Replayer {
     async fn list_objects(
         &self,
         args: &Args,
-        start_time: &DateTime<Utc>,
-        end_time: &DateTime<Utc>,
+        start_time: Option<&DateTime<Utc>>,
+        end_time: Option<&DateTime<Utc>>,
     ) -> Result<Vec<String>> {
         let mut all_objects = Vec::new();
         
@@ -167,11 +176,11 @@ impl Replayer {
         &self,
         key: &str,
         args: &Args,
-        start_time: &DateTime<Utc>,
-        end_time: &DateTime<Utc>,
+        start_time: Option<&DateTime<Utc>>,
+        end_time: Option<&DateTime<Utc>>,
     ) -> bool {
         // Parse Hive-style partitioning
-        // Format: prefix/exchange=X/market_type=Y/stream_type=Z/symbol=S/year=YYYY/month=MM/day=DD/hour=HH/file.ndjson.zst
+        // Format: prefix/exchange=X/market-type=Y/stream-type=Z/symbol=S/year=YYYY/month=MM/day=DD/hour=HH/file.ndjson.zst
         
         // Filter by exchange
         if let Some(exchange) = &args.exchange {
@@ -189,15 +198,24 @@ impl Replayer {
         
         // Filter by stream type
         if let Some(stream_type) = &args.stream_type {
-            if !key.contains(&format!("stream_type={}/", stream_type)) {
+            if !key.contains(&format!("stream-type={}/", stream_type)) {
                 return false;
             }
         }
         
-        // Parse time from path
-        if let Some(time) = self.parse_time_from_key(key) {
-            if time < start_time.timestamp() || time > end_time.timestamp() {
-                return false;
+        // Parse time from path and filter if time range is specified
+        if start_time.is_some() || end_time.is_some() {
+            if let Some(time) = self.parse_time_from_key(key) {
+                if let Some(start) = start_time {
+                    if time < start.timestamp() {
+                        return false;
+                    }
+                }
+                if let Some(end) = end_time {
+                    if time > end.timestamp() {
+                        return false;
+                    }
+                }
             }
         }
         

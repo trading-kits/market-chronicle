@@ -134,7 +134,7 @@ HashMap<PartitionKey, Batch>
 
 **S3 Key Format**:
 ```
-{prefix}/exchange={exchange}/market_type={spot|perpetual}/stream_type={type}/symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
+{prefix}/exchange={exchange}/market-type={spot|perpetual}/stream-type={type}/symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
 ```
 
 ## Channel Communication Patterns

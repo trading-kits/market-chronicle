@@ -275,11 +275,11 @@ ws_subscription_delay_ms = 200
 # S3 Data Layout:
 # --------------
 # Data is stored with Hive-style partitioning:
-# {prefix}/exchange={exchange}/market_type={spot|perpetual}/stream_type={type}/
+# {prefix}/exchange={exchange}/market-type={spot|perpetual}/stream-type={type}/
 # symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
 #
 # Example:
-# production/exchange=binance/market_type=spot/stream_type=trade/
+# production/exchange=binance/market-type=spot/stream-type=trade/
 # symbol=BTCUSDT/year=2024/month=01/day=15/hour=10/
 # a1b2c3d4-e5f6-7890-abcd-ef1234567890.ndjson.zst
 #

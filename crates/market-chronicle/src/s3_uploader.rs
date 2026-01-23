@@ -288,7 +288,7 @@ impl S3Uploader {
         let uuid = uuid::Uuid::new_v4();
         
         format!(
-            "{}/exchange={}/market_type={}/stream_type={}/symbol={}/year={:04}/month={:02}/day={:02}/hour={:02}/{}.ndjson.zst",
+            "{}/exchange={}/market-type={}/stream-type={}/symbol={}/year={:04}/month={:02}/day={:02}/hour={:02}/{}.ndjson.zst",
             self.config.prefix,
             batch.partition_key.exchange,
             batch.partition_key.market_type,

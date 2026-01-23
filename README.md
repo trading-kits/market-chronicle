@@ -217,13 +217,13 @@ See [docs/configuration-guide.md](docs/configuration-guide.md) for complete conf
 ### S3 Key Structure (Hive-Style Partitioning)
 
 ```
-{prefix}/exchange={exchange}/market_type={spot|perpetual}/stream_type={type}/
+{prefix}/exchange={exchange}/market-type={spot|perpetual}/stream-type={type}/
 symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
 ```
 
 Example:
 ```
-production/exchange=binance/market_type=spot/stream_type=trade/
+production/exchange=binance/market-type=spot/stream-type=trade/
 symbol=BTCUSDT/year=2024/month=01/day=15/hour=10/
 a1b2c3d4-e5f6-7890-abcd-ef1234567890.ndjson.zst
 ```
@@ -233,9 +233,9 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890.ndjson.zst
 Each file contains newline-delimited JSON, compressed with zstd:
 
 ```json
-{"timestamp":1705334567890,"exchange":"binance","market_type":"spot","stream_type":"trade","symbol":"BTCUSDT","data":{...}}
-{"timestamp":1705334568123,"exchange":"binance","market_type":"spot","stream_type":"trade","symbol":"BTCUSDT","data":{...}}
-{"timestamp":1705334568456,"exchange":"binance","market_type":"spot","stream_type":"trade","symbol":"BTCUSDT","data":{...}}
+{"local_timestamp":1705334567890,"exchange":"binance","market_type":"spot","stream_type":"trade","symbol":"BTCUSDT","data":{...}}
+{"local_timestamp":1705334568123,"exchange":"binance","market_type":"spot","stream_type":"trade","symbol":"BTCUSDT","data":{...}}
+{"local_timestamp":1705334568456,"exchange":"binance","market_type":"spot","stream_type":"trade","symbol":"BTCUSDT","data":{...}}
 ```
 
 ### Querying with DuckDB
@@ -254,13 +254,13 @@ SET s3_url_style='path';
 
 -- Query with partition pruning
 SELECT 
-    timestamp,
+    local_timestamp,
     symbol,
     data
-FROM read_ndjson_auto('s3://market-data/production/exchange=binance/market_type=spot/stream_type=trade/symbol=BTCUSDT/year=2024/month=01/day=15/**/*.ndjson.zst')
-WHERE timestamp >= 1705334567000 
-  AND timestamp < 1705338167000
-ORDER BY timestamp
+FROM read_ndjson_auto('s3://market-data/production/exchange=binance/market-type=spot/stream-type=trade/symbol=BTCUSDT/year=2024/month=01/day=15/**/*.ndjson.zst')
+WHERE local_timestamp >= 1705334567000 
+  AND local_timestamp < 1705338167000
+ORDER BY local_timestamp
 LIMIT 100;
 ```
 
@@ -347,118 +347,34 @@ docker logs -f market-chronicle
 curl http://localhost:9090/metrics
 ```
 
-### Kubernetes
-
-Example deployment manifest:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: market-chronicle
-spec:
-  replicas: 2  # For high availability
-  selector:
-    matchLabels:
-      app: market-chronicle
-  template:
-    metadata:
-      labels:
-        app: market-chronicle
-    spec:
-      containers:
-      - name: market-chronicle
-        image: market-chronicle:latest
-        args: ["/config/config.toml"]
-        ports:
-        - name: metrics
-          containerPort: 9090
-          protocol: TCP
-        volumeMounts:
-        - name: config
-          mountPath: /config
-        resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: metrics
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: metrics
-          initialDelaySeconds: 5
-          periodSeconds: 5
-      volumes:
-      - name: config
-        configMap:
-          name: market-chronicle-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: market-chronicle
-  labels:
-    app: market-chronicle
-spec:
-  ports:
-  - name: metrics
-    port: 9090
-    targetPort: metrics
-  selector:
-    app: market-chronicle
----
-# If using Prometheus Operator
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: market-chronicle
-  labels:
-    app: market-chronicle
-spec:
-  selector:
-    matchLabels:
-      app: market-chronicle
-  endpoints:
-  - port: metrics
-    interval: 15s
-    path: /metrics
-```
 
 ### Multi-Instance Deployment
 
 For high availability and rate limit distribution:
 
-1. Deploy 2-3 instances with different S3 prefixes:
+1. Deploy 2-3 instances with different S3 endpoints:
 ```toml
 # Instance 1
 [s3]
-prefix = "instance-1"
+endpoint = "minio-1:9000"
 
 # Instance 2
 [s3]
-prefix = "instance-2"
+endpoint = "minio-2:9000"
 
 # Instance 3
 [s3]
-prefix = "instance-3"
+endpoint = "minio-3:9000"
 ```
 
 2. Each instance collects identical data
-3. Query layer handles deduplication
+3. Query layer handles [deduplication](docs/deduplication.md)
 4. Benefits:
    - 3x rate limit capacity
    - No data loss if one instance fails
    - Can detect data corruption by comparing
 
-See [docs/geo-distributed-deployment.md](docs/geo-distributed-deployment.md) for detailed guide.
+See [geo-distributed-deployment.md](docs/geo-distributed-deployment.md) for detailed guide.
 
 ## Monitoring
 
@@ -553,8 +469,6 @@ just setup-dev      # Start MinIO + LakeFS
 just stop-dev       # Stop development services
 just clean-dev      # Remove all containers and volumes
 just logs-dev       # View logs from all services
-just minio-console  # Open MinIO console
-just lakefs-console # Open LakeFS console
 ```
 
 ### Running Tests
@@ -580,115 +494,4 @@ cargo test -- --nocapture
 - [Docker Setup](DOCKER_SETUP.md) - Local development environment guide
 - [Geo-Distributed Deployment](docs/geo-distributed-deployment.md) - Multi-instance patterns
 
-## Troubleshooting
-
-### Service won't start
-
-**Error**: `Configuration validation failed`
-
-**Solution**: Check config file syntax and required fields. Run:
-```bash
-cargo run --bin market-chronicle -- config.toml 2>&1 | grep -i error
-```
-
-### No data appearing in S3
-
-**Possible causes**:
-1. S3 credentials incorrect - check endpoint, bucket, keys
-2. Workers not connecting - check WebSocket endpoint
-3. No symbols configured - verify `symbols` array or `mode = "all"`
-4. Batch size too large - decrease `batch_size` for testing
-
-**Debug**:
-```bash
-RUST_LOG=debug cargo run --bin market-chronicle -- config.toml
-```
-
-### High memory usage
-
-**Causes**:
-- Too many active batches (many partitions)
-- Channel buffers too large
-- Too many workers
-
-**Solutions**:
-- Reduce number of subscribed symbols
-- Decrease `batch_size`
-- Use explicit mode instead of all mode
-
-### Upload failures
-
-**Error**: `Failed to upload batch after 5 retries`
-
-**Possible causes**:
-1. S3 service down or unreachable
-2. Invalid credentials
-3. Network issues
-4. Bucket doesn't exist
-
-**Debug**:
-```bash
-# Test S3 connectivity
-aws s3 ls s3://your-bucket --endpoint-url http://localhost:9000
-```
-
-## Performance
-
-### Expected Throughput
-
-| Streams | Messages/sec | Workers | Upload Workers | Memory | Storage/day |
-|---------|-------------|---------|----------------|--------|-------------|
-| 10      | 50          | 1       | 2              | ~200MB | ~1GB        |
-| 100     | 500         | 1       | 4              | ~500MB | ~10GB       |
-| 1000    | 5000        | 1       | 8              | ~1GB   | ~100GB      |
-| 10000   | 50000       | 10      | 16             | ~5GB   | ~1TB        |
-
-### Tuning Guidelines
-
-**Low Volume** (< 100 msg/s):
-```toml
-batch_size = 500
-batch_timeout_ms = 10000
-upload_worker_count = "auto"  # Typically 2 workers
-compression_level = 5
-```
-
-**High Volume** (> 1000 msg/s):
-```toml
-batch_size = 2000
-batch_timeout_ms = 2000
-upload_worker_count = "auto"  # Scales up to 16 workers
-compression_level = 1
-```
-
 ## License
-
-[Choose appropriate license]
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Run `just lint` and `just test`
-5. Submit a pull request
-
-## Support
-
-- Documentation: [docs/](docs/)
-- Issues: [GitHub Issues](https://github.com/yourusername/market-chronicle/issues)
-- Discussions: [GitHub Discussions](https://github.com/yourusername/market-chronicle/discussions)
-
-## Acknowledgments
-
-Built with:
-- [Tokio](https://tokio.rs/) - Async runtime
-- [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite) - WebSocket client
-- [AWS SDK for Rust](https://github.com/awslabs/aws-sdk-rust) - S3 client
-- [OpenTelemetry](https://opentelemetry.io/) - Observability framework
-- [Axum](https://github.com/tokio-rs/axum) - Metrics HTTP server
-- [Prometheus](https://prometheus.io/) - Metrics storage and alerting
-- [zstd](https://github.com/facebook/zstd) - Compression
-- [serde](https://serde.rs/) - Serialization
