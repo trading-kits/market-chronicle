@@ -112,6 +112,7 @@ services:
     container_name: market-chronicle-grafana
     depends_on:
       - prometheus
+      - loki
     ports:
       - "3000:3000"
     environment:
@@ -129,11 +130,42 @@ services:
       timeout: 10s
       retries: 3
 
+  # Loki - Log aggregation storage
+  loki:
+    image: grafana/loki:latest
+    container_name: market-chronicle-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  # Vector - High-performance log collection and routing
+  vector:
+    image: timberio/vector:latest-alpine
+    container_name: market-chronicle-vector
+    depends_on:
+      - loki
+    volumes:
+      - ./vector.toml:/etc/vector/vector.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["--config", "/etc/vector/vector.toml"]
+    ports:
+      - "8686:8686"  # Vector API
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8686/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Market Chronicle - Main service
   market-chronicle:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: market-chronicle
     depends_on:
       minio:
@@ -145,7 +177,7 @@ services:
     environment:
       - RUST_LOG=info
     volumes:
-      - ./config.docker.toml:/config/config.toml:ro
+      - ../config.docker.toml:/config/config.toml:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
@@ -164,4 +196,6 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  loki_data:
     driver: local

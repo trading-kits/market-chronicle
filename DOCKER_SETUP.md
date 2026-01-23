@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `docker-compose.yml` provides a complete local development and testing environment for Market Chronicle, including:
+The `deploy/docker-compose.yml` provides a complete local development and testing environment for Market Chronicle, including:
 
 - **MinIO**: S3-compatible object storage
 - **PostgreSQL**: Database for LakeFS metadata
@@ -16,13 +16,13 @@ The `docker-compose.yml` provides a complete local development and testing envir
 
 ```bash
 # Start all services
-docker-compose up -d
+docker-compose -f deploy/docker-compose.yml up -d
 
 # Check service status
-docker-compose ps
+docker-compose -f deploy/docker-compose.yml ps
 
 # View logs
-docker-compose logs -f
+docker-compose -f deploy/docker-compose.yml logs -f
 ```
 
 ### 2. Access Web UIs
@@ -165,13 +165,13 @@ docker-compose up
 
 ```bash
 # Stop all services
-docker-compose stop
+docker-compose -f deploy/docker-compose.yml stop
 
 # Stop and remove containers
-docker-compose down
+docker-compose -f deploy/docker-compose.yml down
 
 # Stop and remove containers + volumes (⚠️ deletes all data)
-docker-compose down -v
+docker-compose -f deploy/docker-compose.yml down -v
 ```
 
 ### View Logs
@@ -191,10 +191,10 @@ docker-compose logs --tail=100 grafana
 
 ```bash
 # Restart all
-docker-compose restart
+docker-compose -f deploy/docker-compose.yml restart
 
 # Restart specific service
-docker-compose restart prometheus
+docker-compose -f deploy/docker-compose.yml restart prometheus
 ```
 
 ### Check Status
@@ -256,7 +256,7 @@ docker run --rm -v market-chronicle_minio-data:/data -v $(pwd):/backup alpine ta
 
 ```bash
 # Check logs
-docker-compose logs [service-name]
+docker-compose -f deploy/docker-compose.yml logs [service-name]
 
 # Check if port is already in use
 lsof -i :9000  # MinIO
@@ -273,7 +273,7 @@ lsof -i :3000  # Grafana
 ### Grafana Can't Connect to Prometheus
 
 1. Check Prometheus is healthy: http://localhost:9091/-/healthy
-2. From Grafana container: `docker-compose exec grafana ping prometheus`
+2. From Grafana container: `docker-compose -f deploy/docker-compose.yml exec grafana ping prometheus`
 3. Check datasource config in Grafana UI
 
 ### LakeFS Can't Connect to MinIO
@@ -286,13 +286,13 @@ lsof -i :3000  # Grafana
 
 ```bash
 # Stop and remove everything
-docker-compose down -v
+docker-compose -f deploy/docker-compose.yml down -v
 
 # Remove all market-chronicle related data
 docker volume rm $(docker volume ls -q | grep market-chronicle)
 
 # Start fresh
-docker-compose up -d
+docker-compose -f deploy/docker-compose.yml up -d
 ```
 
 ## Production Considerations

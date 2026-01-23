@@ -31,13 +31,13 @@ ws_endpoint = "wss://stream.binance.com:9443/stream"
 rest_endpoint = "https://api.binance.com"
 
 # Explicit mode with just BTC
-mode = "all"
-symbols = []
-symbol_refresh_interval_s = 3600
+mode = "explicit"
+symbols = ["BTCUSDT"]
+#symbol_refresh_interval_s = 3600
 
 # Just trade stream for simplicity
-streams = ["trade", "depth", "kline"]
-kline_intervals = ["1m"]
+streams = ["trade"]
+#kline_intervals = ["1m"]
 
 # Binance rate limits
 ws_connection_rate = 5

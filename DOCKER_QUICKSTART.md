@@ -18,7 +18,7 @@ This guide will help you get Market Chronicle running in Docker in under 5 minut
 make docker-up
 
 # Or use docker-compose directly
-docker-compose up -d
+docker-compose -f deploy/docker-compose.yml up -d
 ```
 
 This will start:
@@ -50,6 +50,8 @@ make docker-rebuild
 # Or manually
 docker-compose build market-chronicle
 docker-compose up -d market-chronicle
+docker-compose -f deploy/docker-compose.yml build market-chronicle
+docker-compose -f deploy/docker-compose.yml up -d market-chronicle
 ```
 
 ### 4. View Logs
@@ -82,12 +84,12 @@ curl -s http://localhost:9090/metrics | grep -E "(batch_|worker_|s3_)"
 
 1. Open http://localhost:3000
 2. Login with `admin` / `admin`
-3. Go to **Dashboards** → **Import**
-4. Upload `grafana-dashboard.json`
-5. Select the Prometheus datasource
-6. Click **Import**
+3. Go to **Dashboards** → **Browse**
+4. The "Market Chronicle" dashboard is **auto-imported** on startup
 
 You'll see real-time metrics!
+
+**Note**: The dashboard, Prometheus datasource, and Loki datasource are automatically configured - no manual import needed!
 
 ### 7. View Data in MinIO
 
@@ -101,19 +103,17 @@ You'll see real-time metrics!
 ### View Active Containers
 
 ```bash
-docker-compose ps
+docker-compose -f deploy/docker-compose.yml ps
 ```
 
 ### Restart a Single Service
 
 ```bash
 # Restart market-chronicle
-docker-compose restart market-chronicle
+docker-compose -f deploy/docker-compose.yml restart market-chronicle
 
 # Restart prometheus
-docker-compose restart prometheus
-```
-
+docker-compose -f deploy/docker-compose.yml restart prometheus
 ### Update Configuration
 
 ```bash
@@ -132,6 +132,8 @@ make docker-logs
 ```bash
 # Run multiple market-chronicle instances
 docker-compose up -d --scale market-chronicle=3
+```
+docker-compose -f deploy/docker-compose.yml up -d --scale market-chronicle=3
 ```
 
 **Note**: Each instance should use a different S3 prefix to avoid conflicts.
@@ -170,20 +172,21 @@ sum(worker_active_streams)
 ### Grafana Dashboards
 
 1. Open http://localhost:3000
-2. Import `grafana-dashboard.json`
+2. The "Market Chronicle" dashboard is **auto-imported** - no manual steps needed!
 3. View real-time metrics with beautiful visualizations
+4. Datasources (Prometheus + Loki) are also auto-configured
 
 ### Logs
 
 ```bash
 # Real-time logs with colors
-docker-compose logs -f --tail=100 market-chronicle
+docker-compose -f deploy/docker-compose.yml logs -f --tail=100 market-chronicle
 
 # Filter for errors only
-docker-compose logs market-chronicle | grep ERROR
+docker-compose -f deploy/docker-compose.yml logs market-chronicle | grep ERROR
 
 # Save logs to file
-docker-compose logs market-chronicle > market-chronicle.log
+docker-compose -f deploy/docker-compose.yml logs market-chronicle > market-chronicle.log
 ```
 
 ## Data Management
@@ -236,14 +239,14 @@ docker-compose up -d
 
 ```bash
 # Check logs
-docker-compose logs market-chronicle
+docker-compose -f deploy/docker-compose.yml logs market-chronicle
 
 # Check if port 9090 is already in use
 lsof -i :9090
 
 # Rebuild from scratch
-docker-compose build --no-cache market-chronicle
-docker-compose up -d market-chronicle
+docker-compose -f deploy/docker-compose.yml build --no-cache market-chronicle
+docker-compose -f deploy/docker-compose.yml up -d market-chronicle
 ```
 
 ### No Data in MinIO
@@ -275,9 +278,7 @@ curl http://localhost:9091/api/v1/targets | jq
 docker exec market-chronicle-prometheus cat /etc/prometheus/prometheus.yml
 
 # 4. Restart Prometheus
-docker-compose restart prometheus
-```
-
+docker-compose -f deploy/docker-compose.yml restart prometheus
 ### High CPU/Memory Usage
 
 ```bash
@@ -332,6 +333,8 @@ ws_subscription_delay_ms = 500
 1. **Customize Configuration**: Edit `config.toml` to add more exchanges/symbols
 2. **Set Up Alerts**: Configure Prometheus alerts using `prometheus-alerts.yml`
 3. **Create Custom Dashboards**: Build Grafana dashboards for your specific needs
+2. **Set Up Alerts**: Configure Prometheus alerts using `prometheus-alerts.yml`
+3. **Create Custom Dashboards**: Build Grafana dashboards for your specific needs
 4. **Production Deployment**: See [README.md](README.md) for Kubernetes deployment
 
 ## Useful Commands Reference
@@ -364,5 +367,4 @@ curl http://localhost:9090/metrics
 
 - Documentation: [docs/](docs/)
 - Issues: GitHub Issues
-- Logs: `docker-compose logs market-chronicle`
-- Health: `curl http://localhost:9090/health`
+- Logs: `docker-compose -f deploy/docker-compose.yml logs market-chronicle`

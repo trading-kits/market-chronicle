@@ -1,0 +1,71 @@
+# Vector Configuration for Docker Log Aggregation
+
+# Source: Collect logs from Docker containers
+[sources.docker_logs]
+type = "docker_logs"
+# Include all containers (don't specify include_containers to collect from all)
+
+# Transform: Parse and enrich logs
+[transforms.process_logs]
+type = "remap"
+inputs = ["docker_logs"]
+source = '''
+  # Parse container labels
+  .container_name = .container_name
+  .container_id = .container_id
+  .image = .image
+  
+  # Add timestamp if not present
+  if !exists(.timestamp) {
+    .timestamp = now()
+  }
+  
+  # Parse JSON logs if possible
+  if is_string(.message) && starts_with!(.message, "{") {
+    parsed, err = parse_json(.message)
+    if err == null {
+      .parsed = parsed
+      # Extract common fields
+      if exists(.parsed.level) {
+        .level = upcase!(string!(.parsed.level))
+      }
+      if exists(.parsed.msg) {
+        .msg = .parsed.msg
+      }
+    }
+  }
+  
+  # Default level if not present
+  if !exists(.level) {
+    .level = "INFO"
+  }
+  
+  # Add labels for Loki
+  .service = .container_name
+'''
+
+# Sink: Send to Loki
+[sinks.loki]
+type = "loki"
+inputs = ["process_logs"]
+endpoint = "http://loki:3100"
+encoding.codec = "json"
+
+# Labels for Loki - using VRL to extract from event fields
+[sinks.loki.labels]
+job = "docker"
+container_name = "{{ container_name }}"
+image = "{{ image }}"
+level = "{{ level }}"
+
+# Optional: Send to console for debugging (disabled in production)
+# [sinks.console]
+# type = "console"
+# inputs = ["process_logs"]
+# encoding.codec = "json"
+# target = "stdout"
+
+# Health check
+[api]
+enabled = true
+address = "0.0.0.0:8686"

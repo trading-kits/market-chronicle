@@ -46,7 +46,7 @@ run-release: ## Run the main service in release mode
 
 ## Docker Compose dev environment
 setup-dev: ## Start all development services (MinIO, PostgreSQL, LakeFS, Prometheus, Grafana)
-	docker-compose up -d
+	docker-compose -f deploy/docker-compose.yml up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 10
 	@echo ""
@@ -59,39 +59,47 @@ setup-dev: ## Start all development services (MinIO, PostgreSQL, LakeFS, Prometh
 	@echo "🏔  LakeFS Console:    http://localhost:8000"
 	@echo "   Setup required on first run"
 	@echo ""
-	@echo "📊 Prometheus:        http://localhost:9090"
+	@echo "📊 Prometheus:        http://localhost:9091"
 	@echo ""
 	@echo "📈 Grafana:           http://localhost:3000"
 	@echo "   Username: admin"
 	@echo "   Password: admin"
 	@echo ""
+	@echo "🔍 Loki (Logs):       http://localhost:3100"
+	@echo ""
 	@echo "Run 'make minio-console', 'make lakefs-console', or 'make grafana-console' to open in browser"
 
 stop-dev: ## Stop development services
-	docker-compose stop
+	docker-compose -f deploy/docker-compose.yml stop
 	@echo "✅ Development services stopped"
 
 clean-dev: ## Remove all development containers and volumes
-	docker-compose down -v
+	docker-compose -f deploy/docker-compose.yml down -v
 	@echo "✅ Development environment cleaned"
 
 logs-dev: ## Follow logs from all development services
-	docker-compose logs -f
+	docker-compose -f deploy/docker-compose.yml logs -f
 
 logs-minio: ## Follow MinIO logs only
-	docker-compose logs -f minio
+	docker-compose -f deploy/docker-compose.yml logs -f minio
 
 logs-lakefs: ## Follow LakeFS logs only
-	docker-compose logs -f lakefs
+	docker-compose -f deploy/docker-compose.yml logs -f lakefs
 
 logs-postgres: ## Follow PostgreSQL logs only
-	docker-compose logs -f postgres
+	docker-compose -f deploy/docker-compose.yml logs -f postgres
 
 logs-prometheus: ## Follow Prometheus logs only
-	docker-compose logs -f prometheus
+	docker-compose -f deploy/docker-compose.yml logs -f prometheus
 
 logs-grafana: ## Follow Grafana logs only
-	docker-compose logs -f grafana
+	docker-compose -f deploy/docker-compose.yml logs -f grafana
+
+logs-loki: ## Follow Loki logs only
+	docker-compose -f deploy/docker-compose.yml logs -f loki
+
+logs-vector: ## Follow Vector logs only
+	docker-compose -f deploy/docker-compose.yml logs -f vector
 
 minio-console: ## Open MinIO console in browser
 	@echo "Opening MinIO console at http://localhost:9001"
