@@ -38,12 +38,15 @@ just setup-dev
 ```
 
 This starts:
+- **Market Chronicle** (data collection service with metrics) at `http://localhost:9090`
 - **MinIO** (S3-compatible storage) at `http://localhost:9000`
 - **MinIO Console** at `http://localhost:9001` (admin/admin)
 - **LakeFS** (data versioning) at `http://localhost:8000`
 - **PostgreSQL** (LakeFS metadata)
 - **Prometheus** (metrics storage) at `http://localhost:9091`
 - **Grafana** (metrics visualization) at `http://localhost:3000` (admin/admin)
+- **Vector** (log collection) at `http://localhost:8686`
+- **Loki** (log aggregation) at `http://localhost:3100` 
 
 > **Note**: Prometheus runs on port 9091 to avoid conflict with market-chronicle's metrics endpoint (port 9090)
 

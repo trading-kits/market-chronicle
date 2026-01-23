@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
     let aggregator_handle = tokio::spawn(aggregator.run());
     
     // Resolve S3 upload worker count (may be auto-computed)
-    let upload_worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker);
+    let upload_worker_count = config.s3.upload_worker_count.resolve(&config.exchanges, config.s3.partitions_per_worker)?;
     let estimated_partitions = config.estimate_partition_count();
     
     // Spawn S3 upload workers with individual channels

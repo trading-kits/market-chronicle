@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_partition_key_hour_rounding() {
         let msg = MarketMessage {
-            local_timestamp: 1705334567890, // 2024-01-15 12:42:47.890
+            local_timestamp: 1705334567890, // 2024-01-15 16:02:47.890 UTC
             exchange: "binance".to_string(),
             market_type: MarketType::Spot,
             stream_type: StreamType::Trade,
@@ -130,8 +130,8 @@ mod tests {
         
         let key = PartitionKey::from_message(&msg);
         
-        // Should be rounded down to hour: 2024-01-15 12:00:00.000
-        assert_eq!(key.hour, 1705330800000);
+        // Should be rounded down to hour: 2024-01-15 16:00:00.000 UTC
+        assert_eq!(key.hour, 1705334400000);
     }
     
     #[test]
