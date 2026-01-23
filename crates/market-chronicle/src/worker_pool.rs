@@ -171,4 +171,143 @@ impl WorkerPoolManager {
     pub fn worker_count(&self) -> usize {
         self.workers.len()
     }
+    
+    /// Unsubscribe from streams across workers
+    /// This is useful for cleaning up streams for delisted symbols in "all" mode
+    /// Workers with no remaining streams will be terminated automatically
+    pub async fn unsubscribe_streams(&mut self, streams_to_remove: Vec<String>) -> Result<()> {
+        if streams_to_remove.is_empty() {
+            return Ok(());
+        }
+        
+        info!(
+            exchange = %self.exchange_config.name,
+            streams_to_remove = streams_to_remove.len(),
+            "Unsubscribing from streams"
+        );
+        
+        let streams_set: std::collections::HashSet<_> = streams_to_remove.iter().collect();
+        let mut workers_to_terminate = Vec::new();
+        
+        // Find which workers have the streams we want to unsubscribe from
+        for (idx, worker) in self.workers.iter_mut().enumerate() {
+            let streams_in_worker: Vec<String> = worker.assigned_streams
+                .iter()
+                .filter(|s| streams_set.contains(s))
+                .cloned()
+                .collect();
+            
+            if !streams_in_worker.is_empty() {
+                info!(
+                    exchange = %self.exchange_config.name,
+                    worker_id = worker.worker_id,
+                    streams = streams_in_worker.len(),
+                    "Sending unsubscribe command to worker"
+                );
+                
+                // Send unsubscribe command
+                if let Err(e) = worker.command_tx.send(WorkerCommand::Unsubscribe {
+                    streams: streams_in_worker.clone(),
+                }).await {
+                    warn!(
+                        worker_id = worker.worker_id,
+                        error = %e,
+                        "Failed to send unsubscribe command"
+                    );
+                } else {
+                    // Remove streams from assigned_streams
+                    worker.assigned_streams.retain(|s| !streams_set.contains(s));
+                    
+                    // Check if worker now has zero streams
+                    if worker.assigned_streams.is_empty() {
+                        info!(
+                            exchange = %self.exchange_config.name,
+                            worker_id = worker.worker_id,
+                            "Worker has no streams remaining, marking for termination"
+                        );
+                        workers_to_terminate.push(idx);
+                    }
+                }
+            }
+        }
+        
+        // Terminate workers with no streams (in reverse order to maintain indices)
+        if !workers_to_terminate.is_empty() {
+            self.terminate_workers(workers_to_terminate).await;
+        }
+        
+        Ok(())
+    }
+    
+    /// Terminate specific workers by index
+    /// Indices must be in ascending order
+    async fn terminate_workers(&mut self, mut indices: Vec<usize>) {
+        // Sort indices in descending order so removal doesn't affect subsequent indices
+        indices.sort_unstable_by(|a, b| b.cmp(a));
+        
+        info!(
+            exchange = %self.exchange_config.name,
+            workers_to_terminate = indices.len(),
+            "Terminating empty workers"
+        );
+        
+        let timeout = Duration::from_secs(5);
+        
+        for idx in indices {
+            if idx >= self.workers.len() {
+                warn!(
+                    exchange = %self.exchange_config.name,
+                    idx = idx,
+                    "Worker index out of bounds, skipping"
+                );
+                continue;
+            }
+            
+            let worker = self.workers.remove(idx);
+            let worker_id = worker.worker_id;
+            
+            info!(
+                exchange = %self.exchange_config.name,
+                worker_id = worker_id,
+                "Terminating worker"
+            );
+            
+            // Drop command_tx to signal worker to shut down
+            // When the worker's command_rx receives None, it will exit gracefully
+            drop(worker.command_tx);
+            
+            // Wait for worker to complete with timeout
+            match tokio::time::timeout(timeout, worker.join_handle).await {
+                Ok(Ok(())) => {
+                    info!(
+                        exchange = %self.exchange_config.name,
+                        worker_id = worker_id,
+                        "Worker terminated gracefully"
+                    );
+                }
+                Ok(Err(e)) => {
+                    warn!(
+                        exchange = %self.exchange_config.name,
+                        worker_id = worker_id,
+                        error = %e,
+                        "Worker panicked during termination"
+                    );
+                }
+                Err(_) => {
+                    warn!(
+                        exchange = %self.exchange_config.name,
+                        worker_id = worker_id,
+                        "Worker termination timed out"
+                    );
+                    // Note: join_handle is dropped here, which cancels the task
+                }
+            }
+        }
+        
+        info!(
+            exchange = %self.exchange_config.name,
+            remaining_workers = self.workers.len(),
+            "Worker termination complete"
+        );
+    }
 }

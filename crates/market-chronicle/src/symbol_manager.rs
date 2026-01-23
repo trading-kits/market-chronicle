@@ -190,9 +190,24 @@ impl SymbolManager {
                 exchange = %self.config.name,
                 delisted_symbols = removed.len(),
                 symbols = ?removed.iter().take(10).collect::<Vec<_>>(),
-                "Symbols delisted (workers will continue)"
+                "Symbols delisted, unsubscribing from streams"
             );
-            // Note: We don't unsubscribe or shutdown workers (workers never scale down)
+            
+            // Build streams for delisted symbols and unsubscribe
+            let streams_to_remove = self.build_streams(&removed);
+            info!(
+                exchange = %self.config.name,
+                streams_to_remove = streams_to_remove.len(),
+                "Unsubscribing from delisted symbol streams"
+            );
+            
+            if let Err(e) = self.worker_pool.unsubscribe_streams(streams_to_remove).await {
+                error!(
+                    exchange = %self.config.name,
+                    error = %e,
+                    "Failed to unsubscribe from delisted streams"
+                );
+            }
         }
         
         let old_count = self.current_symbols.len();
