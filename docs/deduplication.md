@@ -111,15 +111,6 @@ struct MessageKey {
 
 **Note**: Klines are updated multiple times before closing - keep final closed version.
 
-#### Aggregated Trade Streams
-
-```rust
-// Unique key
-(exchange, symbol, agg_trade_id)
-
-// Similar to trades, use agg_trade_id
-```
-
 ## Deduplication Algorithms
 
 ### Algorithm 1: Hash-Based Deduplication (In-Memory)
@@ -528,6 +519,8 @@ def deduplicate_daily_dask(date: str):
     #     delete_s3_prefix(s3, 'bucket', f"{instance}/dt={date}")
 
 # Alternative: More memory-efficient for very large datasets
+
+#Batch Merge Deduplication
 def deduplicate_daily_dask_streaming(date: str):
     """
     Memory-efficient deduplication using Dask distributed scheduler.

@@ -48,7 +48,5 @@ grafana-dashboard.json
 # Data directories
 data/
 minio_data/
-postgres_data/
-lakefs_data/
 prometheus_data/
 grafana_data/

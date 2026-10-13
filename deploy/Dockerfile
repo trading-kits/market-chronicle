@@ -1,5 +1,5 @@
 # Multi-stage build for Market Chronicle
-FROM rust:latest as builder
+FROM rust:latest AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ FROM debian:sid-slim
 
 # Install CA certificates and other runtime dependencies
 RUN apt-get update && \
-    apt-get install -y ca-certificates && \
+    apt-get install -y ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
@@ -32,7 +32,7 @@ EXPOSE 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD ["/usr/bin/curl", "-f", "http://localhost:9090/health", "||", "exit", "1"]
+    CMD ["curl", "-f", "http://localhost:9090/health"]
 
 # Run the service
 ENTRYPOINT ["market-chronicle"]

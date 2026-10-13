@@ -12,7 +12,6 @@
 # S3-compatible endpoint URL
 # - For AWS S3: "https://s3.amazonaws.com" or "https://s3.{region}.amazonaws.com"
 # - For MinIO: "http://localhost:9000"
-# - For LakeFS: "http://localhost:8000"
 endpoint = "http://localhost:9000"
 
 # S3 bucket name where market data will be stored
@@ -29,11 +28,7 @@ region = "us-east-1"
 # - Enable easy data cleanup or migration
 prefix = "production"
 
-# S3 access credentials
-# SECURITY: Consider using environment variables instead of hardcoding
-# Example: access_key_id = "${AWS_ACCESS_KEY_ID}"
-access_key_id = "minioadmin"
-secret_access_key = "minioadmin"
+# S3 credentials come from MC_S3_ACCESS_KEY_ID and MC_S3_SECRET_ACCESS_KEY.
 
 # Number of parallel S3 upload workers
 # - More workers = higher upload throughput

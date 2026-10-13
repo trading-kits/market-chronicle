@@ -2,6 +2,7 @@ use market_chronicle_core::{
     config::S3Config,
     types::{Batch, MarketMessage, PartitionKey},
 };
+use opentelemetry::metrics::{Counter, Histogram};
 use opentelemetry::KeyValue;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -81,7 +82,7 @@ impl BatchAggregator {
                         batches_created = batch_count,
                         "Batch aggregator shutting down, flushing remaining batches"
                     );
-                    self.flush_all_batches().await;
+                    self.flush_all_batches(&batches_created, &batch_size_histogram).await;
                     break;
                 }
                 
@@ -97,16 +98,7 @@ impl BatchAggregator {
                             let batches_before = self.active_batches.len();
                             if let Some(batch) = self.process_message(market_msg) {
                                 batch_count += 1;
-                                let batch_size = batch.messages.len() as u64;
-                                
-                                batches_created.add(1, &[
-                                    KeyValue::new("exchange", batch.partition_key.exchange.clone()),
-                                    KeyValue::new("stream_type", batch.partition_key.stream_type.to_string()),
-                                ]);
-                                batch_size_histogram.record(batch_size, &[
-                                    KeyValue::new("exchange", batch.partition_key.exchange.clone()),
-                                    KeyValue::new("stream_type", batch.partition_key.stream_type.to_string()),
-                                ]);
+                                record_flushed_batch(&batch, &batches_created, &batch_size_histogram);
                                 
                                 // Update gauge: batch was removed
                                 let batches_after = self.active_batches.len();
@@ -130,7 +122,7 @@ impl BatchAggregator {
                                 batches_created = batch_count,
                                 "Message channel closed, flushing and exiting"
                             );
-                            self.flush_all_batches().await;
+                            self.flush_all_batches(&batches_created, &batch_size_histogram).await;
                             break;
                         }
                     }
@@ -138,7 +130,11 @@ impl BatchAggregator {
                 
                 _ = timeout_check.tick() => {
                     let batches_before = self.active_batches.len();
-                    let flushed = self.flush_old_batches(batch_timeout).await;
+                    let flushed = self.flush_old_batches(
+                        batch_timeout,
+                        &batches_created,
+                        &batch_size_histogram,
+                    ).await;
                     if flushed > 0 {
                         batch_count += flushed as u64;
                         let batches_after = self.active_batches.len();
@@ -237,7 +233,12 @@ impl BatchAggregator {
         None
     }
     
-    async fn flush_old_batches(&mut self, max_age: Duration) -> usize {
+    async fn flush_old_batches(
+        &mut self,
+        max_age: Duration,
+        batches_created: &Counter<u64>,
+        batch_size_histogram: &Histogram<u64>,
+    ) -> usize {
         let now = Instant::now();
         let mut to_flush = Vec::new();
         
@@ -261,6 +262,7 @@ impl BatchAggregator {
                     "Batch timeout, flushing"
                 );
                 
+                record_flushed_batch(&batch, batches_created, batch_size_histogram);
                 if self.batch_tx.send(batch).await.is_err() {
                     warn!("Batch channel closed during timeout flush");
                     break;
@@ -271,7 +273,11 @@ impl BatchAggregator {
         count
     }
     
-    async fn flush_all_batches(&mut self) {
+    async fn flush_all_batches(
+        &mut self,
+        batches_created: &Counter<u64>,
+        batch_size_histogram: &Histogram<u64>,
+    ) {
         let batch_count = self.active_batches.len();
         
         if batch_count > 0 {
@@ -288,10 +294,24 @@ impl BatchAggregator {
                 "Flushing batch on shutdown"
             );
             
+            record_flushed_batch(&batch, batches_created, batch_size_histogram);
             if self.batch_tx.send(batch).await.is_err() {
                 warn!("Batch channel closed during final flush");
                 break;
             }
         }
     }
+}
+
+fn record_flushed_batch(
+    batch: &Batch,
+    batches_created: &Counter<u64>,
+    batch_size_histogram: &Histogram<u64>,
+) {
+    let attributes = [
+        KeyValue::new("exchange", batch.partition_key.exchange.clone()),
+        KeyValue::new("stream_type", batch.partition_key.stream_type.to_string()),
+    ];
+    batches_created.add(1, &attributes);
+    batch_size_histogram.record(batch.messages.len() as u64, &attributes);
 }

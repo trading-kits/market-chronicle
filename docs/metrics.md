@@ -73,7 +73,7 @@ rate(worker_reconnects_total[5m])
 rate(batch_created_total[1m])
 
 # Average batch size
-rate(batch_messages_processed[5m]) / rate(batch_created_total[5m])
+sum by (exchange, stream_type) (rate(batch_size_messages_sum[5m])) / sum by (exchange, stream_type) (rate(batch_size_messages_count[5m]))
 
 # 95th percentile batch size
 histogram_quantile(0.95, batch_size_messages_bucket)
@@ -85,7 +85,7 @@ histogram_quantile(0.95, batch_size_messages_bucket)
 |-------------|------|-------------|--------|
 | `s3_uploads_total` | Counter | Successful S3 uploads | `worker_id`, `exchange`, `stream_type` |
 | `s3_uploads_failures` | Counter | Failed S3 uploads | `worker_id`, `exchange`, `error_type` |
-| `s3_upload_duration_seconds` | Histogram | S3 upload latency distribution | `worker_id` |
+| `s3_upload_duration_milliseconds` | Histogram | S3 upload latency distribution | `worker_id` |
 | `s3_upload_bytes` | Counter | Total bytes uploaded (compressed) | `worker_id`, `exchange` |
 | `s3_compression_ratio` | Histogram | Compression ratio distribution | `exchange`, `stream_type` |
 
@@ -94,11 +94,11 @@ histogram_quantile(0.95, batch_size_messages_bucket)
 # Upload success rate
 rate(s3_uploads_total[5m]) / (rate(s3_uploads_total[5m]) + rate(s3_uploads_failures[5m]))
 
-# Average upload latency
-rate(s3_upload_duration_seconds_sum[5m]) / rate(s3_upload_duration_seconds_count[5m])
+# Average upload latency (ms)
+rate(s3_upload_duration_milliseconds_sum[5m]) / rate(s3_upload_duration_milliseconds_count[5m])
 
-# 99th percentile upload time
-histogram_quantile(0.99, s3_upload_duration_seconds_bucket)
+# 99th percentile upload time (ms)
+histogram_quantile(0.99, s3_upload_duration_milliseconds_bucket)
 
 # Total data volume (MB/sec)
 rate(s3_upload_bytes[1m]) / 1024 / 1024
@@ -221,7 +221,7 @@ groups:
       
       # High S3 upload latency
       - alert: HighS3Latency
-        expr: histogram_quantile(0.95, s3_upload_duration_seconds_bucket) > 5
+        expr: histogram_quantile(0.95, s3_upload_duration_milliseconds_bucket) > 5000
         for: 5m
         labels:
           severity: warning

@@ -22,7 +22,7 @@ Market Chronicle is a Rust-based service that collects real-time market data fro
 
 - Rust 1.75+ (install from [rustup.rs](https://rustup.rs/))
 - Docker and Docker Compose (for local development)
-- S3-compatible storage (AWS S3, MinIO, or LakeFS)
+- S3-compatible storage (AWS S3 or MinIO)
 
 ### Local Development Setup
 
@@ -32,7 +32,7 @@ git clone https://github.com/yourusername/market-chronicle.git
 cd market-chronicle
 ```
 
-2. **Start development services** (MinIO + LakeFS + Prometheus + Grafana):
+2. **Start development services** (MinIO + Prometheus + Grafana):
 ```bash
 just setup-dev
 ```
@@ -41,8 +41,6 @@ This starts:
 - **Market Chronicle** (data collection service with metrics) at `http://localhost:9090`
 - **MinIO** (S3-compatible storage) at `http://localhost:9000`
 - **MinIO Console** at `http://localhost:9001` (admin/admin)
-- **LakeFS** (data versioning) at `http://localhost:8000`
-- **PostgreSQL** (LakeFS metadata)
 - **Prometheus** (metrics storage) at `http://localhost:9091`
 - **Grafana** (metrics visualization) at `http://localhost:3000` (admin/admin)
 - **Vector** (log collection) at `http://localhost:8686`
@@ -73,8 +71,6 @@ endpoint = "http://localhost:9000"
 bucket = "market-data"
 region = "us-east-1"
 prefix = "dev"
-access_key_id = "minioadmin"
-secret_access_key = "minioadmin"
 upload_worker_count = "auto"  # Auto-compute based on workload
 # partitions_per_worker = 75  # Optional tuning (default: 75)
 batch_size = 500
@@ -145,7 +141,7 @@ You should see logs indicating:
                     └────────┬────────┘
                              │ NDJSON.zst
                     ┌────────┴────────┐
-                    │  S3 / LakeFS    │
+                    │  S3 / MinIO     │
                     │  (Hive format)  │
                     └─────────────────┘
 ```
@@ -172,8 +168,6 @@ endpoint = "http://localhost:9000"
 bucket = "market-data"
 region = "us-east-1"
 prefix = "production"
-access_key_id = "your-key"
-secret_access_key = "your-secret"
 upload_worker_count = "auto"  # Auto-compute based on workload
 # partitions_per_worker = 75  # Optional tuning (default: 75)
 batch_size = 1000
@@ -220,6 +214,8 @@ See [docs/configuration-guide.md](docs/configuration-guide.md) for complete conf
 {prefix}/exchange={exchange}/market-type={spot|perpetual}/stream-type={type}/
 symbol={symbol}/year={yyyy}/month={mm}/day={dd}/hour={hh}/{uuid}.ndjson.zst
 ```
+
+`{uuid}` is a UUID v7 generated when the batch is uploaded. UUID v7 values are time-ordered, so objects in the same hour partition sort by creation time.
 
 Example:
 ```
@@ -274,6 +270,8 @@ cargo run --bin market-chronicle-replay -- \
   --start-time "2024-01-15T00:00:00Z" \
   --end-time "2024-01-15T23:59:59Z" \
   --exchange binance \
+  --market-type spot \
+  --stream-type trade \
   --symbol BTCUSDT \
   --speed 2.0
 ```
@@ -282,8 +280,9 @@ Options:
 - `--start-time`: Start of time range (RFC3339 format)
 - `--end-time`: End of time range (RFC3339 format)
 - `--exchange`: Filter by exchange (optional)
-- `--symbol`: Filter by symbol (optional)
+- `--market-type`: Filter by market type (optional)
 - `--stream-type`: Filter by stream type (optional)
+- `--symbol`: Filter by symbol (optional)
 - `--speed`: Replay speed multiplier (1.0 = real-time, 2.0 = 2x speed)
 - `--output`: Output file path (optional, defaults to stdout)
 - `--stats-only`: Print statistics only, don't output messages
@@ -295,7 +294,7 @@ Options:
 The project includes a complete Docker Compose setup with all dependencies:
 
 ```bash
-# Build and start all services (MinIO, LakeFS, Prometheus, Grafana, Market Chronicle)
+# Build and start all services (MinIO, Prometheus, Grafana, Market Chronicle)
 just docker-up
 
 # View logs
@@ -307,7 +306,6 @@ just docker-down
 
 This starts the complete stack:
 - **MinIO**: S3-compatible storage on port 9000
-- **LakeFS**: Data versioning on port 8000
 - **Prometheus**: Metrics on port 9091
 - **Grafana**: Dashboards on port 3000
 - **Market Chronicle**: Service with metrics on port 9090
@@ -405,7 +403,7 @@ The service tracks comprehensive metrics for all components:
 **S3 Uploader**:
 - `s3_uploads_total` - Successful S3 uploads
 - `s3_upload_failures_total` - Failed S3 uploads
-- `s3_upload_duration_seconds` - Upload latency distribution
+- `s3_upload_duration_milliseconds` - Upload latency distribution
 - `s3_upload_bytes_total` - Total bytes uploaded
 - `s3_compression_ratio` - Compression ratio distribution
 
@@ -465,7 +463,7 @@ just run            # Run main service
 ### Development Environment
 
 ```bash
-just setup-dev      # Start MinIO + LakeFS
+just setup-dev      # Start MinIO and monitoring services
 just stop-dev       # Stop development services
 just clean-dev      # Remove all containers and volumes
 just logs-dev       # View logs from all services
@@ -491,7 +489,4 @@ cargo test -- --nocapture
 - [Graceful Shutdown](docs/graceful-shutdown.md) - Shutdown sequence and data loss
 - [Configuration Guide](docs/configuration-guide.md) - Complete config reference
 - [Metrics & Observability](docs/metrics.md) - OpenTelemetry, Prometheus, Grafana setup
-- [Docker Setup](DOCKER_SETUP.md) - Local development environment guide
 - [Geo-Distributed Deployment](docs/geo-distributed-deployment.md) - Multi-instance patterns
-
-## License

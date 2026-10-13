@@ -20,14 +20,6 @@ pub enum StreamType {
     Trade,
     Depth,
     Kline,
-    #[serde(rename = "aggTrade")]
-    AggTrade,
-    #[serde(rename = "markPrice")]
-    MarkPrice,
-    #[serde(rename = "publicTrade")]
-    PublicTrade,
-    #[serde(rename = "orderbook")]
-    Orderbook,
 }
 
 impl StreamType {
@@ -36,22 +28,14 @@ impl StreamType {
             StreamType::Trade => "trade",
             StreamType::Depth => "depth",
             StreamType::Kline => "kline",
-            StreamType::AggTrade => "aggTrade",
-            StreamType::MarkPrice => "markPrice",
-            StreamType::PublicTrade => "publicTrade",
-            StreamType::Orderbook => "orderbook",
         }
     }
-    
+
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "trade" => Some(StreamType::Trade),
             "depth" => Some(StreamType::Depth),
             "kline" => Some(StreamType::Kline),
-            "aggTrade" => Some(StreamType::AggTrade),
-            "markPrice" => Some(StreamType::MarkPrice),
-            "publicTrade" => Some(StreamType::PublicTrade),
-            "orderbook" => Some(StreamType::Orderbook),
             _ => None,
         }
     }
@@ -77,7 +61,7 @@ impl PartitionKey {
     pub fn from_message(msg: &MarketMessage) -> Self {
         // Round timestamp to hour
         let hour = (msg.local_timestamp / 3600000) * 3600000;
-        
+
         Self {
             exchange: msg.exchange.clone(),
             market_type: msg.market_type,
@@ -103,7 +87,7 @@ impl Batch {
             created_at,
         }
     }
-    
+
     pub fn with_capacity(partition_key: PartitionKey, created_at: Instant, capacity: usize) -> Self {
         Self {
             partition_key,
@@ -127,20 +111,10 @@ mod tests {
             symbol: "BTCUSDT".to_string(),
             data: serde_json::json!({}),
         };
-        
+
         let key = PartitionKey::from_message(&msg);
-        
+
         // Should be rounded down to hour: 2024-01-15 16:00:00.000 UTC
         assert_eq!(key.hour, 1705334400000);
-    }
-    
-    #[test]
-    fn test_stream_type_serialization() {
-        let st = StreamType::AggTrade;
-        let json = serde_json::to_string(&st).unwrap();
-        assert_eq!(json, r#""aggTrade""#);
-        
-        let deserialized: StreamType = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, StreamType::AggTrade);
     }
 }

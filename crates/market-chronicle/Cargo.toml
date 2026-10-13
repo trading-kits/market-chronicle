@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "market_chronicle"
+path = "src/lib.rs"
+
 [[bin]]
 name = "market-chronicle"
 path = "src/main.rs"
@@ -30,3 +34,4 @@ opentelemetry-otlp = { workspace = true }
 opentelemetry-prometheus = { workspace = true }
 prometheus = { workspace = true }
 axum = { workspace = true }
+once_cell = "1.21.4"

@@ -12,39 +12,43 @@ use replayer::Replayer;
 #[command(about = "Replay market data from S3 storage", long_about = None)]
 struct Args {
     /// Configuration file path
-    #[arg(short, long, default_value = "config.toml")]
+    #[arg(long, default_value = "config.toml")]
     config: String,
     
     /// Start time (RFC3339 format, e.g., 2024-01-15T00:00:00Z). If not specified, replays from the beginning.
-    #[arg(short, long)]
+    #[arg(long = "start-time")]
     start_time: Option<String>,
     
     /// End time (RFC3339 format, e.g., 2024-01-15T23:59:59Z). If not specified, replays to the end.
-    #[arg(short, long)]
+    #[arg(long = "end-time")]
     end_time: Option<String>,
     
     /// Filter by exchange name (optional)
-    #[arg(short = 'x', long)]
+    #[arg(long)]
     exchange: Option<String>,
     
     /// Filter by symbol (optional)
-    #[arg(short = 'y', long)]
+    #[arg(long)]
     symbol: Option<String>,
     
     /// Filter by stream type (optional)
-    #[arg(short = 't', long)]
+    #[arg(long = "stream-type")]
     stream_type: Option<String>,
+    
+    /// Filter by market type (optional, e.g., spot, futures, perpetual)
+    #[arg(long = "market-type")]
+    market_type: Option<String>,
     
     /// Replay speed multiplier (1.0 = real-time, 2.0 = 2x speed, 0.5 = half speed)
     #[arg(long, default_value = "1.0")]
     speed: f64,
     
     /// Output file path (optional, defaults to stdout)
-    #[arg(short, long)]
+    #[arg(long)]
     output: Option<String>,
     
     /// Print statistics only (don't output messages)
-    #[arg(long)]
+    #[arg(long = "stats-only")]
     stats_only: bool,
 }
 

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Notify};
 use tracing::{debug, error, info, warn};
+use once_cell::sync::Lazy;
 
 pub struct S3Uploader {
     worker_id: usize,
@@ -36,7 +37,7 @@ impl S3Uploader {
             shutdown,
         }
     }
-    
+
     pub async fn run(mut self) {
         info!(
             worker_id = self.worker_id,
@@ -44,7 +45,7 @@ impl S3Uploader {
             compression_level = self.config.compression_level,
             "S3 uploader starting"
         );
-        
+
         // Initialize metrics (OpenTelemetry will add _total suffix to counters)
         let meter = opentelemetry::global::meter("s3_uploader");
         let uploads_total = meter
@@ -55,10 +56,6 @@ impl S3Uploader {
             .u64_counter("s3_upload_failures")
             .with_description("Failed S3 uploads")
             .init();
-        let upload_duration = meter
-            .f64_histogram("s3_upload_duration_seconds")
-            .with_description("S3 upload latency distribution")
-            .init();
         let upload_bytes = meter
             .u64_counter("s3_upload_bytes")
             .with_description("Total bytes uploaded (compressed)")
@@ -67,9 +64,9 @@ impl S3Uploader {
             .f64_histogram("s3_compression_ratio")
             .with_description("Compression ratio distribution")
             .init();
-        
+
         let worker_id_str = self.worker_id.to_string();
-        
+
         let mut upload_count = 0u64;
         let mut total_messages = 0u64;
         let mut total_bytes_compressed = 0u64;
@@ -77,11 +74,11 @@ impl S3Uploader {
         let mut stats_interval = tokio::time::interval(Duration::from_secs(60));
         let mut last_upload_count = 0u64;
         let mut last_message_count = 0u64;
-        
+
         loop {
             tokio::select! {
                 biased;
-                
+
                 _ = self.shutdown.notified() => {
                     info!(
                         worker_id = self.worker_id,
@@ -94,37 +91,37 @@ impl S3Uploader {
                     total_messages += remaining_messages;
                     break;
                 }
-                
+
                 batch = self.batch_rx.recv() => {
                     match batch {
                         Some(batch) => {
                             let message_count = batch.messages.len() as u64;
                             total_messages += message_count;
-                            
+
                             // Calculate uncompressed size
                             let uncompressed_size = serde_json::to_vec(&batch.messages)
                                 .map(|v| v.len() as u64)
                                 .unwrap_or(0);
                             total_bytes_uncompressed += uncompressed_size;
-                            
+
                             let start = Instant::now();
                             let exchange = batch.partition_key.exchange.clone();
                             let stream_type = batch.partition_key.stream_type.to_string();
-                            
+
                             match self.upload_batch(batch).await {
                                 Ok(compressed_size) => {
                                     upload_count += 1;
                                     total_bytes_compressed += compressed_size;
-                                    
-                                    let duration = start.elapsed().as_secs_f64();
+
+                                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                                     let ratio = compressed_size as f64 / uncompressed_size as f64;
-                                    
+
                                     uploads_total.add(1, &[
                                         KeyValue::new("worker_id", worker_id_str.clone()),
                                         KeyValue::new("exchange", exchange.clone()),
                                         KeyValue::new("stream_type", stream_type.clone()),
                                     ]);
-                                    upload_duration.record(duration, &[
+                                    S3_UPLOADER_METRICS.upload_duration.record(duration_ms, &[
                                         KeyValue::new("worker_id", worker_id_str.clone()),
                                     ]);
                                     upload_bytes.add(compressed_size, &[
@@ -156,7 +153,7 @@ impl S3Uploader {
                         }
                     }
                 }
-                
+
                 _ = stats_interval.tick() => {
                     let uploads_since_last = upload_count - last_upload_count;
                     let messages_since_last = total_messages - last_message_count;
@@ -166,7 +163,7 @@ impl S3Uploader {
                     } else {
                         0.0
                     };
-                    
+
                     info!(
                         worker_id = self.worker_id,
                         total_uploads = upload_count,
@@ -179,13 +176,13 @@ impl S3Uploader {
                         compression_ratio = format!("{:.2}x", compression_ratio),
                         "S3 uploader statistics"
                     );
-                    
+
                     last_upload_count = upload_count;
                     last_message_count = total_messages;
                 }
             }
         }
-        
+
         info!(
             worker_id = self.worker_id,
             uploads = upload_count,
@@ -193,11 +190,11 @@ impl S3Uploader {
             "S3 uploader stopped"
         );
     }
-    
+
     async fn upload_batch(&self, batch: Batch) -> Result<u64, ()> {
         let key = self.build_s3_key(&batch);
         let message_count = batch.messages.len();
-        
+
         debug!(
             worker_id = self.worker_id,
             exchange = %batch.partition_key.exchange,
@@ -208,7 +205,7 @@ impl S3Uploader {
             key = %key,
             "Compressing and uploading batch"
         );
-        
+
         let compressed_data = match self.compress_batch(&batch) {
             Ok(data) => data,
             Err(e) => {
@@ -221,13 +218,13 @@ impl S3Uploader {
                 return Err(());
             }
         };
-        
+
         let compressed_size = compressed_data.len() as u64;
-        
+
         // Retry logic with exponential backoff
         let mut backoff = Duration::from_secs(1);
         let max_retries = 5;
-        
+
         for attempt in 0..max_retries {
             match self.s3_client
                 .put_object()
@@ -261,7 +258,7 @@ impl S3Uploader {
                         error = %e,
                         "S3 upload failed, retrying"
                     );
-                    
+
                     if attempt < max_retries - 1 {
                         tokio::time::sleep(backoff).await;
                         backoff *= 2;
@@ -269,7 +266,7 @@ impl S3Uploader {
                 }
             }
         }
-        
+
         error!(
             worker_id = self.worker_id,
             key = %key,
@@ -278,15 +275,15 @@ impl S3Uploader {
             symbol = %batch.partition_key.symbol,
             "Failed to upload batch after {} retries", max_retries
         );
-        
+
         Err(())
     }
-    
+
     fn build_s3_key(&self, batch: &Batch) -> String {
         let dt = chrono::DateTime::from_timestamp(batch.partition_key.hour / 1000, 0)
             .expect("Invalid timestamp");
-        let uuid = uuid::Uuid::new_v4();
-        
+        let uuid = uuid::Uuid::now_v7();
+
         format!(
             "{}/exchange={}/market-type={}/stream-type={}/symbol={}/year={:04}/month={:02}/day={:02}/hour={:02}/{}.ndjson.zst",
             self.config.prefix,
@@ -301,7 +298,7 @@ impl S3Uploader {
             uuid
         )
     }
-    
+
     fn compress_batch(&self, batch: &Batch) -> Result<Vec<u8>, std::io::Error> {
         // Serialize to NDJSON
         let mut ndjson = Vec::new();
@@ -309,18 +306,18 @@ impl S3Uploader {
             serde_json::to_writer(&mut ndjson, msg)?;
             ndjson.push(b'\n');
         }
-        
+
         // Compress with zstd
         let mut encoder = zstd::Encoder::new(Vec::new(), self.config.compression_level)?;
         encoder.write_all(&ndjson)?;
         encoder.finish()
     }
-    
+
     async fn drain_remaining_batches(&mut self, timeout: Duration) -> (u64, u64) {
         let deadline = Instant::now() + timeout;
         let mut upload_count = 0u64;
         let mut message_count = 0u64;
-        
+
         while Instant::now() < deadline {
             match tokio::time::timeout(Duration::from_millis(100), self.batch_rx.recv()).await {
                 Ok(Some(batch)) => {
@@ -332,7 +329,7 @@ impl S3Uploader {
                 _ => break,
             }
         }
-        
+
         if upload_count > 0 {
             info!(
                 worker_id = self.worker_id,
@@ -341,7 +338,27 @@ impl S3Uploader {
                 "Processed remaining batches during shutdown"
             );
         }
-        
+
         (upload_count, message_count)
+    }
+}
+
+static S3_UPLOADER_METRICS: Lazy<S3UploaderMetrics> = Lazy::new(S3UploaderMetrics::new);
+
+#[derive(Clone)]
+struct S3UploaderMetrics {
+    pub upload_duration: opentelemetry::metrics::Histogram<f64>,
+}
+
+impl S3UploaderMetrics {
+    pub fn new() -> Self {
+        let meter = opentelemetry::global::meter("s3_uploader");
+
+        let upload_duration = meter
+            .f64_histogram("s3_upload_duration_milliseconds")
+            .with_description("S3 upload latency distribution")
+            .init();
+
+        Self { upload_duration }
     }
 }

@@ -70,10 +70,10 @@ All buffering uses tokio's `mpsc` channels:
 
 ```rust
 // Message channel: WebSocket workers → Batch aggregator
-let (message_tx, message_rx) = mpsc::channel(10000);
+let (message_tx, message_rx) = mpsc::channel(100000);
 
 // Batch channel: Batch aggregator → S3 uploaders
-let (batch_tx, batch_rx) = mpsc::channel(1000);
+let (batch_tx, batch_rx) = mpsc::channel(10000);
 ```
 
 ### Benefits
@@ -95,20 +95,20 @@ let (batch_tx, batch_rx) = mpsc::channel(1000);
 
 ### Capacity Planning
 
-**Message Channel** (default: 10,000 messages):
+**Message Channel** (default: 100,000 messages):
 - Average message size: ~500 bytes
-- Buffer memory: 10,000 × 500 bytes = **5 MB**
+- Buffer memory: 100,000 × 500 bytes = **50 MB**
 
-**Batch Channel** (default: 1,000 batches):
+**Batch Channel** (default: 10,000 batches):
 - Average batch size: 1,000 messages × 500 bytes = 500 KB
-- Buffer memory: 1,000 × 500 KB = **500 MB**
+- Buffer memory: 10,000 × 500 KB = **5 GB**
 
 **Active Batches** (variable):
 - Depends on number of active partitions
 - Each partition = one active batch
 - Estimate: 1,000 partitions × 500 messages × 500 bytes = **250 MB**
 
-**Total Memory**: ~**750 MB** for buffering (plus Rust overhead)
+**Total Memory**: ~**5.3 GB** for buffering (plus Rust overhead)
 
 ## When to Accept Data Loss
 

@@ -45,7 +45,7 @@ impl WebSocketWorker {
             shutdown,
         }
     }
-    
+
     pub async fn run(mut self) {
         info!(
             worker_id = self.worker_id,
@@ -53,7 +53,7 @@ impl WebSocketWorker {
             market_type = %self.market_type,
             "WebSocket worker starting"
         );
-        
+
         // Initialize metrics (OpenTelemetry will add _total suffix to counters)
         let meter = opentelemetry::global::meter("websocket_worker");
         let messages_received = meter
@@ -68,38 +68,38 @@ impl WebSocketWorker {
             .i64_up_down_counter("worker_active_streams")
             .with_description("Number of active WebSocket streams")
             .init();
-        
+
         let worker_id_str = self.worker_id.to_string();
         let labels = [
             KeyValue::new("worker_id", worker_id_str.clone()),
             KeyValue::new("exchange", self.exchange.clone()),
             KeyValue::new("market_type", self.market_type.to_string()),
         ];
-        
+
         // Initialize gauge to 0
         active_streams_gauge.add(0, &labels);
-        
+
         // Initial connection
         if let Err(e) = self.connect_with_backoff().await {
             error!(worker_id = self.worker_id, "Failed to establish initial connection: {}", e);
             return;
         }
-        
+
         let mut ping_interval = tokio::time::interval(Duration::from_secs(20));
         let mut stats_interval = tokio::time::interval(Duration::from_secs(60));
         let mut message_count = 0u64;
         let mut last_message_count = 0u64;
-        
+
         loop {
             tokio::select! {
                 biased;
-                
+
                 // Handle shutdown signal
                 _ = self.shutdown.notified() => {
                     info!(worker_id = self.worker_id, "Worker shutting down");
                     break;
                 }
-                
+
                 // Handle commands (subscribe/unsubscribe)
                 cmd = self.command_rx.recv() => {
                     match cmd {
@@ -148,7 +148,7 @@ impl WebSocketWorker {
                         }
                     }
                 }
-                
+
                 // Receive messages from WebSocket
                 msg_result = self.ws_client.recv() => {
                     match msg_result {
@@ -204,7 +204,7 @@ impl WebSocketWorker {
                         }
                     }
                 }
-                
+
                 // Send periodic pings
                 _ = ping_interval.tick() => {
                     if let Err(e) = self.ws_client.ping().await {
@@ -217,7 +217,7 @@ impl WebSocketWorker {
                         debug!(worker_id = self.worker_id, "Ping sent successfully");
                     }
                 }
-                
+
                 // Log periodic statistics
                 _ = stats_interval.tick() => {
                     let messages_since_last = message_count - last_message_count;
@@ -235,7 +235,7 @@ impl WebSocketWorker {
                 }
             }
         }
-        
+
         info!(
             worker_id = self.worker_id,
             exchange = %self.exchange,
@@ -243,11 +243,11 @@ impl WebSocketWorker {
             "Worker stopped"
         );
     }
-    
+
     async fn connect_with_backoff(&mut self) -> Result<()> {
         let mut backoff = Duration::from_secs(1);
         let max_backoff = Duration::from_secs(60);
-        
+
         loop {
             match self.ws_client.connect().await {
                 Ok(_) => {
@@ -265,12 +265,12 @@ impl WebSocketWorker {
             }
         }
     }
-    
+
     async fn reconnect_with_backoff(&mut self) -> Result<()> {
         let subscribed = self.ws_client.subscribed_streams();
-        
+
         self.connect_with_backoff().await?;
-        
+
         // Resubscribe to previous streams
         if !subscribed.is_empty() {
             info!(
@@ -280,7 +280,7 @@ impl WebSocketWorker {
             );
             self.ws_client.subscribe(subscribed).await?;
         }
-        
+
         Ok(())
     }
 }

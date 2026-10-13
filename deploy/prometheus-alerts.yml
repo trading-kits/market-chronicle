@@ -80,14 +80,14 @@ groups:
           runbook: "Check if markets are active and WebSocket subscriptions are correct"
       
       - alert: HighS3UploadLatency
-        expr: histogram_quantile(0.95, rate(s3_upload_duration_seconds_bucket[5m])) > 5
+        expr: histogram_quantile(0.95, rate(s3_upload_duration_milliseconds_bucket[5m])) > 5000
         for: 5m
         labels:
           severity: warning
           component: storage
         annotations:
           summary: "High S3 upload latency"
-          description: "P95 upload time is {{ $value | humanizeDuration }} (threshold: 5s)"
+          description: "P95 upload time is {{ $value | humanize }}ms (threshold: 5000ms)"
           impact: "Increased memory usage from batch backlog"
           runbook: "Check S3 endpoint performance and network latency"
       

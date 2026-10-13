@@ -59,7 +59,7 @@ axum = "0.7"
 governor = "0.6"
 
 # UUID generation
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.21", features = ["v7", "serde"] }
 
 # CLI parsing
 clap = { version = "4.4", features = ["derive"] }

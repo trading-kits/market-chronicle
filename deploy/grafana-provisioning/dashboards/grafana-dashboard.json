@@ -387,7 +387,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(batch_messages_processed_total[5m]) / rate(batch_created_total[5m])",
+          "expr": "sum by (exchange, stream_type) (rate(batch_size_messages_sum[5m])) / sum by (exchange, stream_type) (rate(batch_size_messages_count[5m]))",
           "legendFormat": "{{exchange}}-{{stream_type}}",
           "refId": "A"
         }
@@ -557,15 +557,15 @@
               },
               {
                 "color": "yellow",
-                "value": 10
+                "value": 10000
               },
               {
                 "color": "red",
-                "value": 30
+                "value": 30000
               }
             ]
           },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -594,7 +594,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, rate(s3_upload_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, rate(s3_upload_duration_milliseconds_bucket[5m]))",
           "legendFormat": "p50",
           "refId": "A"
         },
@@ -603,7 +603,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(s3_upload_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(s3_upload_duration_milliseconds_bucket[5m]))",
           "legendFormat": "p95",
           "refId": "B"
         },
@@ -612,12 +612,12 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, rate(s3_upload_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.99, rate(s3_upload_duration_milliseconds_bucket[5m]))",
           "legendFormat": "p99",
           "refId": "C"
         }
       ],
-      "title": "S3 Upload Latency (Percentiles)",
+      "title": "S3 Upload Latency (Percentiles, ms)",
       "type": "timeseries"
     },
     {

@@ -1,17 +1,131 @@
 # Auto Worker Scaling
 
-Market Chronicle supports automatic computation of S3 upload worker count, following the same pattern used for WebSocket workers.
+Market Chronicle supports automatic scaling and intelligent allocation for both WebSocket and S3 upload workers.
 
 ## Overview
 
-Similar to how WebSocket workers are dynamically computed based on stream count, S3 upload workers can now be automatically computed based on expected partition count.
+The system manages worker lifecycle dynamically to optimize resource utilization:
 
 ### Worker Types
 
-1. **WebSocket Workers**: Automatically computed as `ceil(total_streams / ws_streams_per_connection)`
-2. **S3 Upload Workers**: Can now be auto-computed as `max(2, min(16, partitions / 75))`
+1. **WebSocket Workers**: 
+   - Automatically spawned based on stream count
+   - Smart allocation reuses existing workers with capacity
+   - Scale up when symbols are discovered
+   - Scale down when symbols are delisted
+   
+2. **S3 Upload Workers**: 
+   - Automatically computed based on expected partition count
+   - Formula: `max(2, min(16, partitions / partitions_per_worker))`
 
-## Partition-Based Calculation
+## WebSocket Worker Smart Allocation
+
+### How It Works
+
+When new symbols are discovered (in `mode = "all"`), the system uses a two-phase allocation strategy:
+
+#### Phase 1: Fill Existing Workers
+
+Before creating new workers, check existing workers for available capacity:
+
+```
+For each existing worker:
+    capacity = ws_streams_per_connection - current_stream_count
+    if capacity > 0:
+        assign up to `capacity` streams to this worker
+        send Subscribe command to add streams
+        update assigned_streams tracking
+```
+
+**Benefits**:
+- Reuses existing WebSocket connections
+- Maximizes connection efficiency
+- Avoids worker proliferation
+
+#### Phase 2: Spawn New Workers
+
+Only if streams remain after Phase 1:
+
+```
+remaining_streams.chunks(ws_streams_per_connection).for_each(|chunk| {
+    spawn_new_worker(chunk)
+})
+```
+
+### Example: Binance Spot (1024 streams/worker)
+
+**Scenario 1: Initial Deployment**
+```
+1000 symbols discovered
+├─ Phase 1: No existing workers, skip
+└─ Phase 2: Spawn Worker 0 with 1000 streams (24 capacity remaining)
+
+Result: 1 worker, 24 wasted capacity
+```
+
+**Scenario 2: Incremental Discovery (Smart Allocation)**
+```
+15 new symbols discovered
+├─ Phase 1: Worker 0 has 24 capacity
+│   └─ Add 15 streams to Worker 0 (9 capacity remaining)
+└─ Phase 2: No streams remaining, skip
+
+Result: Still 1 worker, 9 wasted capacity
+```
+
+**Scenario 3: Before Smart Allocation**
+```
+15 new symbols discovered
+├─ Phase 1: Skipped (not implemented)
+└─ Phase 2: Spawn Worker 1 with 15 streams
+
+Result: 2 workers, 1009 wasted capacity (BAD!)
+```
+
+### Resource Savings
+
+For incremental symbol discovery over 6 months:
+
+| Time | Symbols | Before Smart Allocation | After Smart Allocation |
+|------|---------|------------------------|----------------------|
+| Day 1 | 1000 | Worker 0 (1000) | Worker 0 (1000) |
+| Day 30 | +50 | Worker 1 (50) | Worker 0 (1024), Worker 1 (26) |
+| Day 60 | +30 | Worker 2 (30) | Worker 1 (56) |
+| Day 90 | +20 | Worker 3 (20) | Worker 1 (76) |
+| **Total** | **1100** | **4 workers** | **2 workers** |
+| **Wasted** | | **2944 capacity** | **948 capacity** |
+| **Savings** | | **-** | **67% fewer workers** |
+
+### Worker Termination
+
+When symbols are delisted, workers automatically terminate if they have zero streams:
+
+```
+Symbol delisted
+├─ Unsubscribe from streams
+├─ Check if worker now has 0 streams
+│   ├─ Yes: Mark for termination
+│   │   ├─ Close command channel
+│   │   ├─ Worker exits gracefully
+│   │   └─ Remove from pool
+│   └─ No: Keep running
+```
+
+**Complete lifecycle management**: Workers scale both UP and DOWN based on workload.
+
+### Configuration
+
+No configuration needed - smart allocation is always enabled.
+
+Worker limits are controlled by existing parameters:
+- `ws_streams_per_connection`: Maximum streams per worker (Binance Spot: 1024, Bybit: 200)
+- `ws_connection_rate`: Rate limit for NEW connections (only Phase 2)
+- `ws_max_batch_size`: Batching for Subscribe commands
+- `ws_subscription_delay_ms`: Delay between subscription batches
+
+## S3 Upload Worker Calculation
+
+### Partition-Based Calculation
 
 ### What is a Partition?
 

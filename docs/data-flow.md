@@ -28,7 +28,7 @@ graph TB
         un[S3 Uploader N]
     end
     
-    s3[S3 / LakeFS]
+    s3[S3 / MinIO]
     
     binance -->|Raw Data| w1
     binance -->|Raw Data| w2

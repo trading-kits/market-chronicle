@@ -5,14 +5,10 @@
 
 [s3]
 # Local MinIO instance
-endpoint = "http://localhost:8000"
+endpoint = "http://localhost:9000"
 bucket = "market-data"
 region = "us-east-1"
 prefix = "main"
-
-# MinIO default credentials (from docker-compose.yml)
-access_key_id = "AKIAJHI44AIJO5Y4O2SQ"
-secret_access_key = "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"
 
 # Small settings for quick testing
 upload_worker_count = "auto"  # or explicit number like 4
@@ -30,12 +26,10 @@ market_type = "spot"
 ws_endpoint = "wss://stream.binance.com:9443/stream"
 rest_endpoint = "https://api.binance.com"
 
-# Explicit mode with just BTC
 mode = "all"
 symbols = []
 symbol_refresh_interval_s = 3600
 
-# Just trade stream for simplicity
 streams = ["trade", "depth", "kline"]
 kline_intervals = ["1m"]
 

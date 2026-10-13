@@ -1,0 +1,43 @@
+# Market Chronicle - Manual Testing Configuration
+#
+# This is a minimal configuration for local development and manual testing.
+# Start the dev environment first: just setup-dev
+
+[s3]
+# S3 instance (Docker internal network)
+endpoint = "http://localhost:9000"
+bucket = "market-data"
+region = "us-east-1"
+prefix = "instance-1"
+
+# Small settings for quick testing
+upload_worker_count = "auto"  # Auto-compute based on partition count
+# partitions_per_worker = 75  # Optional tuning parameter
+batch_size = 10000              # Small batch size for quick flushing
+batch_timeout_ms = 60000      # 60 seconds timeout
+compression_level = 3        # Fast compression for testing
+
+# ==============================================================================
+# Test with a single symbol from Binance Spot
+# ==============================================================================
+[[exchanges]]
+name = "bybit"
+market_type = "spot"
+ws_endpoint = "wss://stream.bybit.com/v5/public/spot"
+rest_endpoint = "https://api.bybit.com"
+
+# Explicit mode with just BTC
+mode = "explicit"
+symbols = ["BTCUSDT"]
+#symbol_refresh_interval_s = 3600
+
+# Just trade stream for simplicity
+streams = ["kline", "depth", "trade"]
+kline_intervals = ["1"]
+
+# Binance rate limits
+ws_connection_rate = 5
+ws_streams_per_connection = 200
+ws_max_connections = 300
+ws_max_batch_size = 10  # Maximum streams per subscription message
+ws_subscription_delay_ms = 200  # Delay between subscription batches (milliseconds)

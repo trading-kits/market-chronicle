@@ -1,4 +1,5 @@
 services:
+  # replace with https://github.com/rustfs/rustfs
   # MinIO - S3-compatible storage
   minio:
     image: minio/minio:latest
@@ -7,8 +8,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -18,71 +19,24 @@ services:
       timeout: 20s
       retries: 3
 
-  # MinIO initialization - create bucket
+  # MinIO initialization - create bucket and app access key
   minio-init:
     image: minio/mc:latest
     container_name: market-chronicle-minio-init
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     entrypoint: >
       /bin/sh -c "
       sleep 5;
-      mc alias set myminio http://minio:9000 minioadmin minioadmin;
-      mc mb myminio/binance-data --ignore-existing;
-      mc anonymous set download myminio/binance-data;
-      echo 'MinIO bucket created successfully';
+      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      mc mb myminio/market-archive --ignore-existing;
+      mc admin user add myminio \"${MC_S3_ACCESS_KEY_ID}\" \"${MC_S3_SECRET_ACCESS_KEY}\" || echo 'MinIO user already exists, skipping';
+      mc admin policy attach myminio readwrite --user \"${MC_S3_ACCESS_KEY_ID}\" || echo 'Policy already attached, skipping';
+      echo 'MinIO bucket and access key created successfully';
       "
 
-  # PostgreSQL - LakeFS metadata database
-  postgres:
-    image: postgres:15-alpine
-    container_name: market-chronicle-postgres
-    environment:
-      POSTGRES_USER: lakefs
-      POSTGRES_PASSWORD: lakefs
-      POSTGRES_DB: lakefs
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lakefs"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # LakeFS - Data versioning layer
-  lakefs:
-    image: treeverse/lakefs:latest
-    container_name: market-chronicle-lakefs
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    environment:
-      LAKEFS_DATABASE_TYPE: postgres
-      LAKEFS_DATABASE_POSTGRES_CONNECTION_STRING: postgres://lakefs:lakefs@postgres:5432/lakefs?sslmode=disable
-      LAKEFS_AUTH_ENCRYPT_SECRET_KEY: some-secret-key-change-in-production
-      LAKEFS_BLOCKSTORE_TYPE: s3
-      LAKEFS_BLOCKSTORE_S3_ENDPOINT: http://minio:9000
-      LAKEFS_BLOCKSTORE_S3_FORCE_PATH_STYLE: "true"
-      LAKEFS_BLOCKSTORE_S3_CREDENTIALS_ACCESS_KEY_ID: minioadmin
-      LAKEFS_BLOCKSTORE_S3_CREDENTIALS_SECRET_ACCESS_KEY: minioadmin
-      LAKEFS_BLOCKSTORE_S3_REGION: us-east-1
-      LAKEFS_BLOCKSTORE_S3_DISCOVER_BUCKET_REGION: "false"
-      AWS_REGION: us-east-1
-      AWS_DEFAULT_REGION: us-east-1
-    volumes:
-      - lakefs_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/_health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
+  
   # Prometheus - Metrics collection and monitoring
   prometheus:
     image: prom/prometheus:latest
@@ -94,14 +48,22 @@ services:
       - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9090/-/healthy",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -117,7 +79,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://localhost:3000
     volumes:
@@ -125,7 +87,15 @@ services:
       - ./grafana-provisioning:/etc/grafana/provisioning:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/api/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -153,10 +123,18 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["--config", "/etc/vector/vector.toml"]
     ports:
-      - "8686:8686"  # Vector API
+      - "8686:8686" # Vector API
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8686/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8686/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -172,10 +150,14 @@ services:
         condition: service_healthy
       prometheus:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     ports:
       - "9090:9090"
     environment:
       - RUST_LOG=info
+      - MC_S3_ACCESS_KEY_ID=${MC_S3_ACCESS_KEY_ID}
+      - MC_S3_SECRET_ACCESS_KEY=${MC_S3_SECRET_ACCESS_KEY}
     volumes:
       - ../config.docker.toml:/config/config.toml:ro
     restart: unless-stopped
@@ -188,10 +170,6 @@ services:
 
 volumes:
   minio_data:
-    driver: local
-  postgres_data:
-    driver: local
-  lakefs_data:
     driver: local
   prometheus_data:
     driver: local

@@ -26,7 +26,6 @@ fn test_stream_type_display() {
     assert_eq!(StreamType::Trade.to_string(), "trade");
     assert_eq!(StreamType::Depth.to_string(), "depth");
     assert_eq!(StreamType::Kline.to_string(), "kline");
-    assert_eq!(StreamType::AggTrade.to_string(), "aggTrade");
 }
 
 #[test]
@@ -51,7 +50,10 @@ fn test_batch_creation() {
 #[test]
 fn test_stream_type_from_str() {
     assert_eq!(StreamType::from_str("trade"), Some(StreamType::Trade));
-    assert_eq!(StreamType::from_str("depth"), Some(StreamType::Depth));
+    assert_eq!(
+        StreamType::from_str("depth"),
+        Some(StreamType::Depth)
+    );
     assert_eq!(StreamType::from_str("kline"), Some(StreamType::Kline));
     assert_eq!(StreamType::from_str("unknown"), None);
 }

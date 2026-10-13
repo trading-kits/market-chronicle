@@ -27,8 +27,6 @@ endpoint = "http://localhost:9000"           # S3-compatible endpoint URL
 bucket = "market-data"                       # S3 bucket name
 region = "us-east-1"                         # AWS region
 prefix = "production"                        # Prefix for all S3 keys
-access_key_id = "your-access-key"            # S3 access key
-secret_access_key = "your-secret-key"        # S3 secret key
 upload_worker_count = "auto"                 # Auto-compute workers (or use explicit number like 4)
 batch_size = 1000                            # Messages per batch before flush
 batch_timeout_ms = 5000                      # Max age of batch before flush (milliseconds)
@@ -44,7 +42,6 @@ compression_level = 3                        # zstd compression level (1-22)
 - **Description**: S3-compatible storage endpoint
 - **Notes**: 
   - Use MinIO for local development
-  - Use LakeFS for versioned data lake
   - Use AWS S3 for production
 
 #### `bucket`
@@ -71,11 +68,7 @@ compression_level = 3                        # zstd compression level (1-22)
   - Use to separate multiple service instances
   - Enables easy data cleanup/migration
 
-#### `access_key_id` / `secret_access_key`
-- **Type**: String
-- **Required**: Yes
-- **Description**: S3 credentials
-- **Security**: Store in environment variables or secrets manager
+S3 credentials are read from `MC_S3_ACCESS_KEY_ID` and `MC_S3_SECRET_ACCESS_KEY`.
 
 #### `upload_worker_count`
 - **Type**: Integer or String ("auto")
@@ -226,8 +219,8 @@ ws_subscription_delay_ms = 100                        # Delay between subscripti
 #### `streams`
 - **Type**: Array of strings
 - **Required**: Yes
-- **Binance Values**: `"trade"`, `"depth"`, `"kline"`, `"aggTrade"`, `"markPrice"`
-- **Bybit Values**: `"publicTrade"`, `"kline"`, `"orderbook"`
+- **Binance Values**: `"trade"`, `"depth"`, `"kline"`
+- **Bybit Values**: `"trade"`, `"kline"`, `"depth"`
 - **Description**: Stream types to subscribe to for each symbol
 
 #### `kline_intervals`
@@ -309,8 +302,6 @@ Understanding how streams are counted is critical for capacity planning:
 | `trade` | 1 |
 | `depth` | 1 |
 | `kline` | N (one per interval) |
-| `aggTrade` | 1 |
-| `markPrice` | 1 (global, not per-symbol) |
 
 ### Example Calculations
 
@@ -332,7 +323,7 @@ Total streams: 2 × (1 trade + 1 depth + 3 klines) = 2 × 5 = **10 streams** = *
 **Example 3**: Bybit Spot, all mode
 ```toml
 mode = "all"  # Assume 500 symbols discovered
-streams = ["publicTrade", "orderbook"]        # 2 streams per symbol
+streams = ["trade", "depth"]        # 2 streams per symbol
 ```
 Total streams: 500 × 2 = **1000 streams** = **100 workers needed** (10 streams per worker)
 
@@ -346,8 +337,6 @@ endpoint = "http://localhost:9000"
 bucket = "dev-data"
 region = "us-east-1"
 prefix = "dev"
-access_key_id = "minioadmin"
-secret_access_key = "minioadmin"
 upload_worker_count = 2
 batch_size = 500
 batch_timeout_ms = 10000
@@ -378,8 +367,6 @@ endpoint = "https://s3.us-east-1.amazonaws.com"
 bucket = "prod-market-data"
 region = "us-east-1"
 prefix = "instance-1"
-access_key_id = "${AWS_ACCESS_KEY_ID}"
-secret_access_key = "${AWS_SECRET_ACCESS_KEY}"
 upload_worker_count = 8
 batch_size = 2000
 batch_timeout_ms = 3000
@@ -408,9 +395,7 @@ ws_endpoint = "wss://fstream.binance.com/stream"
 rest_endpoint = "https://fapi.binance.com"
 mode = "explicit"
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
-symbol_refresh_interval_s = 0
-streams = ["aggTrade", "depth", "markPrice"]
-kline_intervals = []
+streams = ["depth"]
 ws_connection_rate = 5
 ws_streams_per_connection = 200
 ws_max_connections = 300
@@ -424,9 +409,7 @@ ws_endpoint = "wss://stream.bybit.com/v5/public/spot"
 rest_endpoint = "https://api.bybit.com"
 mode = "explicit"
 symbols = ["BTCUSDT", "ETHUSDT"]
-symbol_refresh_interval_s = 0
-streams = ["publicTrade", "orderbook"]
-kline_intervals = []
+streams = ["trade", "depth"]
 ws_connection_rate = 10
 ws_streams_per_connection = 10
 ws_max_connections = 500
@@ -440,8 +423,6 @@ endpoint = "http://localhost:9000"
 bucket = "test-bucket"
 region = "us-east-1"
 prefix = "test"
-access_key_id = "test"
-secret_access_key = "test"
 upload_worker_count = 1
 batch_size = 10
 batch_timeout_ms = 1000
@@ -454,9 +435,7 @@ ws_endpoint = "wss://stream.binance.com:9443/stream"
 rest_endpoint = "https://api.binance.com"
 mode = "explicit"
 symbols = ["BTCUSDT"]
-symbol_refresh_interval_s = 0
 streams = ["trade"]
-kline_intervals = []
 ws_connection_rate = 5
 ws_streams_per_connection = 1024
 ws_max_connections = 300

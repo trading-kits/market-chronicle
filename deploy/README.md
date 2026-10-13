@@ -43,8 +43,6 @@ The docker-compose stack includes:
 | Service | Port | Description |
 |---------|------|-------------|
 | **MinIO** | 9000, 9001 | S3-compatible object storage |
-| **PostgreSQL** | 5432 | Database for LakeFS metadata |
-| **LakeFS** | 8000 | Data lake versioning layer |
 | **Prometheus** | 9091 | Metrics collection and storage |
 | **Grafana** | 3000 | Metrics and logs visualization |
 | **Loki** | 3100 | Log aggregation storage |

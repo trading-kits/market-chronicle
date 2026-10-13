@@ -25,13 +25,8 @@ region = "us-east-1"
 # Production prefix to separate from other environments
 prefix = "production"
 
-# S3 credentials - SECURITY: Use environment variables
-# Set these environment variables before starting:
-#   export AWS_ACCESS_KEY_ID=your_access_key
-#   export AWS_SECRET_ACCESS_KEY=your_secret_key
-# Or use IAM roles for EC2/ECS/EKS deployments (preferred)
-access_key_id = "${AWS_ACCESS_KEY_ID}"
-secret_access_key = "${AWS_SECRET_ACCESS_KEY}"
+# S3 credentials come from MC_S3_ACCESS_KEY_ID and MC_S3_SECRET_ACCESS_KEY.
+# Set these environment variables before starting, or use an IAM role.
 
 # Auto-compute worker count based on partition count
 # Recommended for production: scales automatically with workload

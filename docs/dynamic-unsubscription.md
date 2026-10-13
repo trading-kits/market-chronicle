@@ -1,18 +1,37 @@
-# Dynamic Unsubscription and Worker Termination Implementation
+# Dynamic Unsubscription, Worker Termination, and Smart Allocation Implementation
 
 **Date**: 2026-01-23  
-**Feature**: Automatic unsubscription from delisted symbol streams + Worker termination  
+**Features**: 
+- Automatic unsubscription from delisted symbol streams
+- Worker termination for empty workers
+- Smart worker allocation (capacity reuse)
 **Status**: ✅ Implemented and tested
 
 ---
 
 ## Overview
 
-Implemented dynamic unsubscription capability with automatic worker termination. When symbols are delisted from exchanges, the system:
-1. Unsubscribes from the associated WebSocket streams
-2. Detects workers with zero remaining streams
-3. Gracefully terminates empty workers
-4. Removes them from the worker pool
+Implemented comprehensive worker lifecycle management with three key features:
+
+### 1. Dynamic Unsubscription
+When symbols are delisted from exchanges, the system:
+- Unsubscribes from the associated WebSocket streams
+- Detects workers with zero remaining streams
+- Gracefully terminates empty workers
+- Removes them from the worker pool
+
+### 2. Smart Worker Allocation
+When new symbols are discovered, the system:
+- **Phase 1**: Fills existing workers with available capacity
+- **Phase 2**: Spawns new workers only for remaining streams
+- Maximizes resource utilization by reusing workers
+- Prevents worker proliferation with incremental symbol discovery
+
+### 3. Worker Termination
+Automatically removes workers that have no active streams:
+- Graceful shutdown via command channel closure
+- Timeout protection (5 seconds)
+- Proper cleanup and resource release
 
 This is particularly useful for `mode = "all"` deployments that subscribe to all available symbols and need efficient resource management throughout the symbol lifecycle.
 
@@ -60,7 +79,51 @@ async fn terminate_workers(&mut self, indices: Vec<usize>)
 - Worker breaks out of event loop and performs cleanup
 - `join_handle` is awaited to ensure completion
 
-### 2. SymbolManager Enhancement (`crates/market-chronicle/src/symbol_manager.rs`)
+### 2. Smart Worker Allocation (`crates/market-chronicle/src/worker_pool.rs`)
+
+Refactored `spawn_workers_for_streams()` to implement two-phase allocation:
+
+```rust
+pub async fn spawn_workers_for_streams(&mut self, streams: Vec<String>) -> Result<()>
+```
+
+**Phase 1: Fill Existing Workers**
+- Iterates through existing workers to find available capacity
+- Capacity = `ws_streams_per_connection - assigned_streams.len()`
+- Distributes new streams to workers with space
+- Sends `WorkerCommand::Subscribe` to add streams to existing connections
+- Updates `assigned_streams` tracking
+- No new connections created (reuses existing workers)
+
+**Phase 2: Spawn New Workers**
+- Only runs if streams remain after Phase 1
+- Creates new workers using `spawn_new_worker()` helper
+- Applies rate limiting for new connections
+- Chunks streams by `ws_streams_per_connection`
+
+Added private helper method `spawn_new_worker()`:
+
+```rust
+async fn spawn_new_worker(&mut self, streams: Vec<String>) -> Result<()>
+```
+
+**Features**:
+- Extracted from original `spawn_workers_for_streams()` logic
+- Creates WebSocket client, spawns worker task
+- Handles initial subscription with batching
+- Respects `ws_max_batch_size` and `ws_subscription_delay_ms`
+- Applies connection rate limiting
+
+**Key Improvements**:
+- **Resource Efficiency**: Example with Binance Spot (1024 streams/worker):
+  - Before: Worker 1 (1000 streams), Worker 2 (10 streams), Worker 3 (5 streams) = 2 workers with 2033 wasted capacity
+  - After: Worker 1 (1015 streams) = 0 workers with 9 wasted capacity
+  - Savings: 99.6% reduction in wasted capacity
+- **No Stream Migration**: Streams never move between workers (constraint satisfied)
+- **Capacity Tracking**: Uses `assigned_streams.len()` for accurate tracking
+- **Transparent**: No configuration changes required
+
+### 3. SymbolManager Enhancement (`crates/market-chronicle/src/symbol_manager.rs`)
 
 Updated `refresh_symbols()` method to detect and handle delisted symbols:
 
@@ -89,7 +152,7 @@ if !removed.is_empty() {
 
 ## Benefits
 
-### 1. Resource Efficiency
+### 1. Resource Efficiency (Unsubscription + Termination)
 - **Before**: Dead streams continued to run indefinitely, wasting connection bandwidth; workers never terminated
 - **After**: Streams are cleaned up immediately when symbols are delisted; empty workers are terminated
 - **Impact**: 
@@ -97,6 +160,24 @@ if !removed.is_empty() {
   - Frees up worker threads/tasks
   - Releases channel buffer memory
   - Reduces total connection count
+
+### 2. Resource Efficiency (Smart Allocation)
+- **Before**: Always spawned new workers for new streams, even with available capacity
+- **After**: Reuses existing workers before creating new ones
+- **Impact**:
+  - 99%+ reduction in wasted capacity for incremental symbol discovery
+  - Fewer WebSocket connections to exchanges
+  - Lower memory overhead (fewer worker tasks)
+  - Better adherence to connection rate limits
+  
+**Example (Binance Spot, 1024 streams/worker):**
+- Initial: 1000 symbols → Worker 1 (1000 streams, 24 capacity)
+- Discovery: 10 new symbols
+  - **Before**: Worker 2 spawned (10 streams, 1014 wasted)
+  - **After**: Worker 1 updated (1010 streams, 14 capacity)
+- Discovery: 20 more symbols
+  - **Before**: Worker 3 spawned (20 streams, 1004 wasted)
+  - **After**: Worker 1 updated (1024 streams, 0 capacity), Worker 2 spawned (6 streams)
 
 ### 2. Code Quality
 - **Before**: 3 dead code warnings (unused enum variant, unused struct fields)
@@ -124,9 +205,9 @@ if !removed.is_empty() {
    REST API → Get current symbol list → Compare with cached list
    ```
 
-2. **New Symbols Detected**
+2. **New Symbols Detected** (SMART ALLOCATION)
    ```
-   Build streams → Spawn workers → Subscribe to streams
+   Build streams → Check existing workers → Phase 1: Fill existing → Phase 2: Spawn new if needed
    ```
 
 3. **Delisted Symbols Detected** (NEW)
@@ -137,33 +218,43 @@ if !removed.is_empty() {
 ### Worker Lifecycle State Machine
 
 ```
-[New Symbols] 
-     ↓
-[Spawn Worker] ──→ [Running with N streams]
-                          ↓
-                   [Symbol Delisted]
-                          ↓
-                   [Unsubscribe from streams]
-                          ↓
-                    N = N - removed
-                          ↓
-                   ┌──────┴──────┐
-                   ↓             ↓
-            [N > 0]         [N = 0]
-                ↓               ↓
-         [Keep Running]   [Mark for Termination]
-                               ↓
-                        [Close command channel]
-                               ↓
-                        [Worker detects closure]
-                               ↓
-                        [Exit event loop]
-                               ↓
-                        [Cleanup & shutdown]
-                               ↓
-                        [Remove from pool]
-                               ↓
-                           [Terminated]
+[New Symbols Discovered]
+         ↓
+   ┌─────┴─────┐
+   ↓           ↓
+[Existing     [No Existing
+ Workers?]     Workers]
+   ↓           ↓
+[Check        [Phase 2:
+ Capacity]     Spawn New]
+   ↓               ↓
+┌──┴──┐           ↓
+↓     ↓           ↓
+[Has  [No      [Create Worker]
+Cap]  Cap]        ↓
+↓     ↓      [Running with N streams] ←─────┐
+↓     ↓           ↓                          │
+└──┬──┘    [Add streams via Subscribe]      │
+   ↓              ↓                          │
+[Phase 1:   [Symbol Added] ─────────────────┘
+Add to           ↓
+Existing]  [Symbol Delisted]
+   ↓             ↓
+   └──→ [Unsubscribe from streams]
+              ↓
+        N = N - removed
+              ↓
+        ┌─────┴─────┐
+        ↓           ↓
+     [N > 0]     [N = 0]
+        ↓           ↓
+  [Keep Running] [Terminate]
+                    ↓
+             [Close channel]
+                    ↓
+             [Worker exits]
+                    ↓
+            [Remove from pool]
 ```
 
 ### Example Flow
@@ -197,6 +288,23 @@ No new configuration required. The feature automatically activates when:
 ## Logging
 
 The implementation adds comprehensive logging:
+
+### Smart Allocation Logs
+```
+INFO  Starting smart worker allocation
+      exchange="binance" market_type="spot" total_streams=15 existing_workers=1
+      
+INFO  Adding streams to existing worker
+      exchange="binance" worker_id=0 existing_streams=1000 new_streams=15 
+      capacity_remaining=9
+      
+INFO  Phase 1 complete: filled existing workers
+      exchange="binance" streams_distributed=15 streams_remaining=0
+      
+INFO  Smart worker allocation complete
+      exchange="binance" total_workers=1 streams_added=15 
+      streams_to_existing=15 new_workers=0
+```
 
 ### SymbolManager Logs
 ```

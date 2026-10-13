@@ -1,6 +1,14 @@
 # Market Chronicle - Cryptocurrency Market Data Archiving Service
 # Use `just --list` to see all available recipes
 
+export MINIO_ROOT_USER := "minioadmin"
+export MINIO_ROOT_PASSWORD := "minioadmin"
+export GF_SECURITY_ADMIN_PASSWORD := "admin"
+export MC_S3_ACCESS_KEY_ID := "AKIAJDNTT3MJ7SFC2VJQ"
+export MC_S3_SECRET_ACCESS_KEY := "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"
+
+compose := "docker-compose -f deploy/docker-compose.yml"
+
 # Default recipe (show help)
 default:
     @just --list
@@ -68,9 +76,9 @@ run-release:
 
 # Docker Compose dev environment
 
-# Start all development services (MinIO, PostgreSQL, LakeFS, Prometheus, Grafana)
+# Start all development services (MinIO, Prometheus, Grafana)
 setup-dev:
-    docker-compose -f deploy/docker-compose.yml up -d
+    {{compose}} up -d
     @echo "Waiting for services to be ready..."
     @sleep 10
     @echo ""
@@ -80,9 +88,6 @@ setup-dev:
     @echo "   Username: minioadmin"
     @echo "   Password: minioadmin"
     @echo ""
-    @echo "🏔  LakeFS Console:    http://localhost:8000"
-    @echo "   Setup required on first run"
-    @echo ""
     @echo "📊 Prometheus:        http://localhost:9091"
     @echo ""
     @echo "📈 Grafana:           http://localhost:3000"
@@ -91,16 +96,21 @@ setup-dev:
     @echo ""
     @echo "🔍 Loki (Logs):       http://localhost:3100"
     @echo ""
-    @echo "Run 'just minio-console', 'just lakefs-console', or 'just grafana-console' to open in browser"
+    @echo "Open MinIO at http://localhost:9001, Prometheus at http://localhost:9091, or Grafana at http://localhost:3000"
 
 # Stop development services
 stop-dev:
-    docker-compose -f deploy/docker-compose.yml stop
+    {{compose}} stop
     @echo "✅ Development services stopped"
+
+# Remove all containers and volumes
+clean-dev:
+    {{compose}} down -v
+    @echo "✅ Development containers and volumes removed"
 
 # Follow logs from all development services
 logs-dev:
-    docker-compose -f deploy/docker-compose.yml logs -f
+    {{compose}} logs -f
 
 # Clean commands
 
@@ -130,32 +140,32 @@ docker-build:
 
 # Start all services including market-chronicle
 docker-up:
-    docker-compose up -d
+    {{compose}} up -d
 
 # Stop all Docker services
 docker-down:
-    docker-compose down
+    {{compose}} down
 
 # Follow logs from market-chronicle service
 docker-logs:
-    docker-compose logs -f market-chronicle
+    {{compose}} logs -f market-chronicle
 
 # Follow logs from all services
 docker-logs-all:
-    docker-compose logs -f
+    {{compose}} logs -f
 
 # Restart market-chronicle service
 docker-restart:
-    docker-compose restart market-chronicle
+    {{compose}} restart market-chronicle
 
 # Rebuild and restart market-chronicle
 docker-rebuild:
-    docker-compose build market-chronicle
-    docker-compose up -d market-chronicle
+    {{compose}} build market-chronicle
+    {{compose}} up -d market-chronicle
 
 # Remove all containers, volumes, and images
 docker-clean:
-    docker-compose down -v --rmi all
+    {{compose}} down -v --rmi all
 
 # Documentation
 
